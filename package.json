@@ -1,0 +1,119 @@
+{
+	"name": "typedown-markdown-editor",
+	"displayName": "Typedown - Markdown WYSIWYG Editor",
+	"description": "Markdown editor with WYSIWYG mode",
+	"version": "1.0.0",
+	"publisher": "",
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.32.0"
+	},
+	"categories": [
+		"Programming Languages",
+		"Formatters"
+	],
+	"tags": [
+		"markdown",
+		"editor",
+		"wysiwyg",
+		"ckeditor"
+	],
+	"activationEvents": [
+		"onCustomEditor:typedown.markdownEditor",
+		"onCommand:typedown.openWysiwygEditor"
+	],
+	"main": "./dist/extension.js",
+	"contributes": {
+		"customEditors": [
+			{
+				"viewType": "typedown.markdownEditor",
+				"displayName": "Markdown WYSIWYG Editor",
+				"selector": [
+					{
+						"filenamePattern": "*.md"
+					}
+				]
+			}
+		],
+		"commands": [
+			{
+				"command": "typedown.openWysiwygEditor",
+				"title": "Open in WYSIWYG mode",
+				"icon": "$(preview)"
+			},
+			{
+				"command": "typedown.openDefaultEditor",
+				"title": "Open Default Editor",
+				"icon": "$(note)"
+			},
+			{
+				"command": "typedown.debugContext",
+				"title": "Debug Typedown Context",
+				"icon": "$(debug)"
+			}
+		],
+		"menus": {
+			"explorer/context": [
+				{
+					"command": "typedown.openWysiwygEditor",
+					"when": "resourceExtname == .md",
+					"group": "navigation"
+				}
+			],
+			"editor/context": [
+				{
+					"command": "typedown.openWysiwygEditor",
+					"when": "resourceLangId == markdown",
+					"group": "navigation"
+				}
+			],
+			"editor/title/context": [
+				{
+					"command": "typedown.openWysiwygEditor",
+					"when": "resourceLangId == markdown && !typedown.editorIsActive",
+					"group": "navigation"
+				},
+				{
+					"command": "typedown.openDefaultEditor",
+					"when": "resourceLangId == markdown && typedown.editorIsActive",
+					"group": "navigation"
+				}
+			]
+		},
+		"keybindings": [
+			{
+				"command": "typedown.openWysiwygEditor",
+				"key": "ctrl+alt+m",
+				"mac": "ctrl+alt+cmd+m",
+				"when": "resourceLangId == markdown && !typedown.editorIsActive"
+			},
+			{
+				"command": "typedown.openDefaultEditor",
+				"key": "ctrl+alt+m",
+				"mac": "ctrl+alt+cmd+m",
+				"when": "resourceLangId == markdown && typedown.editorIsActive"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "webpack --mode production",
+		"webpack": "webpack --mode development",
+		"webpack-dev": "webpack --mode development --watch",
+		"test-compile": "tsc -p ./",
+		"lint": "eslint . --ext .ts,.tsx"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@types/vscode": "^1.32.0",
+		"@typescript-eslint/eslint-plugin": "^6.0.0",
+		"@typescript-eslint/parser": "^6.0.0",
+		"eslint": "^8.0.0",
+		"ts-loader": "^9.5.0",
+		"typescript": "^5.0.0",
+		"webpack": "^5.90.0",
+		"webpack-cli": "^5.1.0"
+	},
+	"dependencies": {
+		"prettier": "^3.0.0"
+	}
+}

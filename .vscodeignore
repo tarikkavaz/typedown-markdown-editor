@@ -1,0 +1,15 @@
+.vscode/**
+.vscode-test/**
+src/**/*.ts
+.gitignore
+**/tsconfig.json
+**/*.map
+node_modules/**
+*.vsix
+_tools
+.cursor
+.vscodeignore
+dist/vendors-*.js
+dist/vendors-*.js.map
+dist/node_modules-*.js
+dist/node_modules-*.js.map

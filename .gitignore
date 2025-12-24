@@ -1,0 +1,8 @@
+node_modules/
+_tools
+.cursor
+*.vsix
+.DS_Store
+dist/
+*.log
+.vscode-test/
