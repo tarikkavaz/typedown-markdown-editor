@@ -3,7 +3,11 @@
 	"displayName": "Typedown - Markdown WYSIWYG Editor",
 	"description": "Markdown editor with WYSIWYG mode",
 	"version": "1.0.0",
-	"publisher": "",
+	"publisher": "tarikkavaz",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/tarikkavaz/typedown-markdown-editor.git"
+	},
 	"license": "MIT",
 	"engines": {
 		"vscode": "^1.32.0"
