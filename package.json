@@ -27,6 +27,7 @@
 		"onCommand:typedown.openWysiwygEditor"
 	],
 	"main": "./dist/extension.js",
+	"icon": "icon.png",
 	"contributes": {
 		"customEditors": [
 			{
