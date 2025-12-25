@@ -13,3 +13,6 @@ dist/vendors-*.js
 dist/vendors-*.js.map
 dist/node_modules-*.js
 dist/node_modules-*.js.map
+ckeditor5-build-markdown/build/*.map
+**/*.worker.js
+**/*.worker.js.map

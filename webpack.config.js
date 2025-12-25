@@ -19,7 +19,8 @@ const config = {
 		libraryTarget: 'commonjs2',
 		devtoolModuleFilenameTemplate: '../[resource-path]',
 	},
-	devtool: 'source-map',
+	// Only generate source maps in development mode
+	devtool: process.env.NODE_ENV === 'production' ? false : 'source-map',
 	externals: {
 		vscode: 'commonjs vscode',
 	},

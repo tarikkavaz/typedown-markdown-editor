@@ -20,6 +20,22 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
 	constructor(private readonly context: vscode.ExtensionContext) {}
 
+	// Get sideBar.foreground color from VS Code theme
+	private getSideBarForegroundColor(): string {
+		// Try to get from colorCustomizations first
+		const colorCustomizations = vscode.workspace.getConfiguration('workbench').get('colorCustomizations') as Record<string, any> | undefined;
+		if (colorCustomizations && colorCustomizations['sideBar.foreground']) {
+			return colorCustomizations['sideBar.foreground'] as string;
+		}
+		
+		// VS Code doesn't expose theme colors directly via API
+		// We'll use a fallback that matches common themes
+		// The actual color will be read from the webview's computed styles if available
+		// For now, return a CSS variable reference that the webview can resolve
+		return 'var(--vscode-sideBar-foreground, var(--vscode-foreground))';
+	}
+
+
 	// Called when our custom editor is opened.
 	public async resolveCustomTextEditor(
 		document: vscode.TextDocument,
@@ -28,7 +44,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 	): Promise<void> {
 		// Setup initial webview HTML and settings
 		webviewPanel.webview.options = { enableScripts: true };
-		webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview);
+		const sidebarForegroundColor = this.getSideBarForegroundColor();
+		webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, sidebarForegroundColor);
+		
+		// Send theme color to webview
+		webviewPanel.webview.postMessage({
+			type: 'themeColorChanged',
+			sidebarForeground: sidebarForegroundColor,
+		});
 
 		// Update global state when a webview is focused.
 		function handleFocusChange(panel: vscode.WebviewPanel, initialLoadFlag = false) {
@@ -131,7 +154,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			}
 		);
 
-		// Listen for font configuration changes (both extension and VS Code editor settings)
+		// Listen for font configuration changes and theme changes
 		const onDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration('typedown.editor.fontFamily') || 
 				e.affectsConfiguration('typedown.editor.fontSize') ||
@@ -150,6 +173,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					fontFamily: fontFamily,
 				});
 			}
+			
+			// Update theme colors when theme changes
+			if (e.affectsConfiguration('workbench.colorTheme') || 
+				e.affectsConfiguration('workbench.colorCustomizations')) {
+				const sidebarForegroundColor = this.getSideBarForegroundColor();
+				webviewPanel.webview.postMessage({
+					type: 'themeColorChanged',
+					sidebarForeground: sidebarForegroundColor,
+				});
+			}
+		});
+		
+		// Listen for theme changes
+		const onDidChangeActiveColorTheme = vscode.window.onDidChangeActiveColorTheme(() => {
+			const sidebarForegroundColor = this.getSideBarForegroundColor();
+			webviewPanel.webview.postMessage({
+				type: 'themeColorChanged',
+				sidebarForeground: sidebarForegroundColor,
+			});
 		});
 
 		// Make sure we get rid of the listener when our editor is closed.
@@ -167,6 +209,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			saveDocumentSubscription.dispose();
 			onDidChangeTextEditorVisibleRanges.dispose();
 			onDidChangeConfiguration.dispose();
+			onDidChangeActiveColorTheme.dispose();
 		});
 
 		// Receive message from the webview.
@@ -188,7 +231,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 	}
 
 	// Get the static html used for the editor webviews.
-	private getHtmlForWebview(webview: vscode.Webview): string {
+	private getHtmlForWebview(webview: vscode.Webview, sidebarForegroundColor: string = ''): string {
 		// Local path to script and css for the webview
 		const initScriptUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'src', 'markdownEditorInitScript.js')
@@ -222,6 +265,21 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					<title>Markdown WYSIWYG Editor</title>
 					
 					<style>
+						:root {
+							/* Use VS Code theme CSS variables directly - these are automatically available in webviews */
+							/* Standard VS Code CSS variables that are reliably available in webviews */
+							--typedown-theme-foreground: var(--vscode-foreground);
+							--typedown-theme-active-border: var(--vscode-editor-foreground, var(--vscode-foreground));
+							--typedown-theme-separator: var(--vscode-editorGroup-border, var(--vscode-foreground));
+							--typedown-theme-hr-border: var(--vscode-editor-foreground, var(--vscode-foreground));
+							--typedown-theme-table-border: var(--vscode-editorWidget-border, var(--vscode-editorGroup-border, var(--vscode-foreground)));
+							--typedown-theme-button-bg: var(--vscode-button-background);
+							--typedown-theme-button-hover-bg: var(--vscode-button-hoverBackground);
+							--typedown-theme-dropdown-bg: var(--vscode-dropdown-background);
+							--typedown-theme-dropdown-fg: var(--vscode-dropdown-foreground);
+							--typedown-theme-dropdown-border: var(--vscode-dropdown-border);
+						}
+						
 						/* Center and constrain editor width */
 						body {
 							display: flex;
@@ -233,6 +291,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							width: 100%;
 							max-width: 91ch;
 							margin: 0 auto;
+							padding: 0;
+							box-sizing: border-box;
 						}
 						
 						/* Constrain CKEditor root container */
@@ -270,7 +330,135 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						/* Ensure toolbar groups don't overflow */
 						.ck.ck-toolbar .ck-toolbar__items {
 							max-width: 100% !important;
-							overflow: hidden;
+							overflow: visible !important;
+						}
+						
+						/* Ensure dropdowns are visible and properly positioned */
+						.ck.ck-dropdown__panel {
+							z-index: 10000 !important;
+							position: absolute !important;
+							overflow: visible !important;
+							max-height: 400px !important;
+							overflow-y: auto !important;
+							overflow-x: hidden !important;
+							border-color: var(--typedown-theme-active-border) !important;
+							outline-color: var(--typedown-theme-active-border) !important;
+						}
+						
+						/* Style dropdown panel border/outline */
+						.ck.ck-dropdown__panel.ck-dropdown__panel {
+							border: 1px solid var(--typedown-theme-active-border) !important;
+							box-shadow: 0 2px 8px var(--typedown-theme-active-border)33 !important;
+						}
+						
+						/* Make dropdown list scrollable */
+						.ck.ck-dropdown__panel .ck-list {
+							max-height: 400px !important;
+							overflow-y: auto !important;
+							overflow-x: hidden !important;
+						}
+						
+						/* Style dropdown button when open */
+						.ck.ck-dropdown.ck-on .ck-button {
+							border-color: var(--typedown-theme-active-border) !important;
+						}
+						
+						/* Style dropdown button hover/focus */
+						.ck.ck-dropdown .ck-button:hover,
+						.ck.ck-dropdown .ck-button:focus {
+							border-color: var(--typedown-theme-active-border) !important;
+							outline-color: var(--typedown-theme-active-border) !important;
+						}
+						
+						/* Style toolbar separators */
+						.ck.ck-toolbar .ck-toolbar__separator {
+							background-color: var(--typedown-theme-separator) !important;
+							opacity: 0.5 !important;
+						}
+						
+						/* Style horizontal rules (HR) in content */
+						.ck.ck-content hr {
+							border-color: var(--typedown-theme-hr-border) !important;
+							background-color: var(--typedown-theme-hr-border) !important;
+							opacity: 0.6 !important;
+						}
+						
+						.ck.ck-content hr::before {
+							border-color: var(--typedown-theme-hr-border) !important;
+						}
+						
+						.ck.ck-content hr::after {
+							border-color: var(--typedown-theme-hr-border) !important;
+						}
+						
+						.ck.ck-content table,
+						.ck-editor__editable table {
+							border-color: var(--typedown-theme-table-border) !important;
+						
+						}
+						
+						/* Add padding to table cells to prevent content from touching edges */
+						.ck.ck-content table td,
+						.ck.ck-content table th,
+						.ck-editor__editable table td,
+						.ck-editor__editable table th {
+							padding: 8px 12px !important;
+							border-color: var(--typedown-theme-table-border) !important;
+						}
+						
+						.ck.ck-content table td,
+						.ck.ck-content table th,
+						.ck-editor__editable table td,
+						.ck-editor__editable table th {
+							border-color: var(--typedown-theme-table-border) !important;
+						}
+						
+						.ck.ck-content table thead th,
+						.ck.ck-content table tbody th,
+						.ck-editor__editable table thead th,
+						.ck-editor__editable table tbody th {
+							border-color: var(--typedown-theme-table-border) !important;
+						}
+						
+						.ck.ck-content table tbody td,
+						.ck-editor__editable table tbody td {
+							border-color: var(--typedown-theme-table-border) !important;
+						}
+						
+						/* Ensure table containers allow horizontal overflow */
+						.ck.ck-content,
+						.ck-editor__editable {
+							overflow-x: visible !important;
+						}
+						
+						/* Allow parent containers to overflow so tables can break out */
+						.ck.ck-editor__editable-container {
+							overflow-x: visible !important;
+						}
+						
+						.ck.ck-editor__main {
+							overflow-x: visible !important;
+						}
+						
+						/* Ensure body and editor container allow overflow */
+						body {
+							overflow-x: visible !important;
+						}
+						
+						#editor {
+							overflow-x: visible !important;
+						}
+						
+						.ck.ck-toolbar .ck-dropdown {
+							overflow: visible !important;
+						}
+						
+						.ck.ck-editor__top {
+							overflow: visible !important;
+						}
+						
+						.ck.ck-editor__toolbar-container {
+							overflow: visible !important;
 						}
 						
 						/* Make toolbar icons smaller */
@@ -330,6 +518,59 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
 					<script nonce="${nonce}" src="${ckeditorUri}"></script>
 					<script nonce="${nonce}">
+						// Try to read VS Code theme CSS variables if available
+						// VS Code webviews may have access to some CSS variables
+						(function() {
+							const root = document.documentElement;
+							const computedStyle = getComputedStyle(root);
+							
+							// Try to read VS Code CSS variables - use standard ones that are more likely to be available
+							const vscodeVars = {
+								'--vscode-foreground': computedStyle.getPropertyValue('--vscode-foreground'),
+								'--vscode-editor-foreground': computedStyle.getPropertyValue('--vscode-editor-foreground'),
+								'--vscode-editorGroup-border': computedStyle.getPropertyValue('--vscode-editorGroup-border'),
+								'--vscode-editorWidget-border': computedStyle.getPropertyValue('--vscode-editorWidget-border'),
+								'--vscode-button-background': computedStyle.getPropertyValue('--vscode-button-background'),
+								'--vscode-button-hoverBackground': computedStyle.getPropertyValue('--vscode-button-hoverBackground'),
+								'--vscode-dropdown-background': computedStyle.getPropertyValue('--vscode-dropdown-background'),
+								'--vscode-dropdown-foreground': computedStyle.getPropertyValue('--vscode-dropdown-foreground'),
+								'--vscode-dropdown-border': computedStyle.getPropertyValue('--vscode-dropdown-border'),
+							};
+							
+							// Update our CSS variables with VS Code theme variables if available
+							// Use fallbacks if variables aren't available
+							const foreground = vscodeVars['--vscode-foreground'] || root.style.getPropertyValue('--typedown-theme-foreground');
+							if (foreground) root.style.setProperty('--typedown-theme-foreground', foreground);
+							
+							const editorForeground = vscodeVars['--vscode-editor-foreground'] || vscodeVars['--vscode-foreground'] || root.style.getPropertyValue('--typedown-theme-active-border');
+							if (editorForeground) root.style.setProperty('--typedown-theme-active-border', editorForeground);
+							
+							const separator = vscodeVars['--vscode-editorGroup-border'] || vscodeVars['--vscode-foreground'] || root.style.getPropertyValue('--typedown-theme-separator');
+							if (separator) root.style.setProperty('--typedown-theme-separator', separator);
+							
+							const hrBorder = vscodeVars['--vscode-editor-foreground'] || vscodeVars['--vscode-foreground'] || root.style.getPropertyValue('--typedown-theme-hr-border');
+							if (hrBorder) root.style.setProperty('--typedown-theme-hr-border', hrBorder);
+							
+							const tableBorder = vscodeVars['--vscode-editorWidget-border'] || vscodeVars['--vscode-editorGroup-border'] || vscodeVars['--vscode-foreground'] || root.style.getPropertyValue('--typedown-theme-table-border');
+							if (tableBorder) root.style.setProperty('--typedown-theme-table-border', tableBorder);
+							
+							if (vscodeVars['--vscode-button-background']) {
+								root.style.setProperty('--typedown-theme-button-bg', vscodeVars['--vscode-button-background']);
+							}
+							if (vscodeVars['--vscode-button-hoverBackground']) {
+								root.style.setProperty('--typedown-theme-button-hover-bg', vscodeVars['--vscode-button-hoverBackground']);
+							}
+							if (vscodeVars['--vscode-dropdown-background']) {
+								root.style.setProperty('--typedown-theme-dropdown-bg', vscodeVars['--vscode-dropdown-background']);
+							}
+							if (vscodeVars['--vscode-dropdown-foreground']) {
+								root.style.setProperty('--typedown-theme-dropdown-fg', vscodeVars['--vscode-dropdown-foreground']);
+							}
+							if (vscodeVars['--vscode-dropdown-border']) {
+								root.style.setProperty('--typedown-theme-dropdown-border', vscodeVars['--vscode-dropdown-border']);
+							}
+						})();
+						
 						MarkdownEditor.create(document.querySelector('#editor'))
 							.then((editor) => {
 								window.editor = editor;

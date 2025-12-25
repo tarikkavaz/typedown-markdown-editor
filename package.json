@@ -2,7 +2,7 @@
 	"name": "typedown-markdown-editor",
 	"displayName": "Typedown - Markdown WYSIWYG Editor",
 	"description": "Markdown editor with WYSIWYG mode",
-	"version": "1.0.1",
+	"version": "1.0.2",
 	"publisher": "tarikkavaz",
 	"repository": {
 		"type": "git",
@@ -118,7 +118,7 @@
 		}
 	},
 	"scripts": {
-		"vscode:prepublish": "webpack --mode production",
+		"vscode:prepublish": "NODE_ENV=production webpack --mode production",
 		"webpack": "webpack --mode development",
 		"webpack-dev": "webpack --mode development --watch",
 		"test-compile": "tsc -p ./",

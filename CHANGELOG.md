@@ -28,3 +28,21 @@ All notable changes to this project will be documented in this file.
 ### Fixed
 - Toolbar alignment with content area
 - Font smoothing for better readability
+
+## [1.0.2] - 2025-01-25
+
+### Added
+- Keyboard handlers to exit code blocks using Arrow Down, Arrow Up, Enter, and Escape keys
+- Dynamic theme color support using VS Code CSS variables for dropdown borders, toolbar separators, HR lines, and table borders
+- Automatic conversion of HTML tables to markdown table syntax when saving
+
+### Changed
+- Dropdown menus are now scrollable with proper max-height
+- Theme colors now adapt dynamically to VS Code theme changes (no hardcoded colors)
+- Tables are automatically converted to markdown format with proper separator rows
+
+### Fixed
+- Code block exit functionality - users can now navigate out of code blocks using keyboard
+- Dropdown menu visibility - options are now properly displayed
+- Dropdown menu scrolling - all options are accessible even in long lists
+- Table markdown conversion - tables now output correct markdown syntax with separator rows
