@@ -2,7 +2,7 @@
 	"name": "typedown-markdown-editor",
 	"displayName": "Typedown - Markdown WYSIWYG Editor",
 	"description": "Markdown editor with WYSIWYG mode",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"publisher": "tarikkavaz",
 	"repository": {
 		"type": "git",
@@ -75,13 +75,13 @@
 			"editor/title/context": [
 				{
 					"command": "typedown.openWysiwygEditor",
-					"when": "resourceLangId == markdown && !typedown.editorIsActive",
-					"group": "navigation"
+					"when": "resourceExtname == .md && !typedown.editorIsActive",
+					"group": "1_open"
 				},
 				{
 					"command": "typedown.openDefaultEditor",
-					"when": "resourceLangId == markdown && typedown.editorIsActive",
-					"group": "navigation"
+					"when": "resourceExtname == .md && typedown.editorIsActive",
+					"group": "1_open"
 				}
 			]
 		},

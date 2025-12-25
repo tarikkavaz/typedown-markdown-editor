@@ -68,13 +68,71 @@ You can also install directly from the [Open VSX Registry](https://open-vsx.org/
 You can open Markdown files in WYSIWYG mode in several ways:
 
 1. **File Explorer Context Menu**: Right-click on any `.md` file in the explorer and select "Open in WYSIWYG mode"
-2. **Command Palette**: Use the Command Palette to open files in WYSIWYG mode
+2. **Editor Tab Context Menu**: Right-click on a markdown file tab and select "Open in WYSIWYG mode"
+3. **Command Palette**: Use the Command Palette to open files in WYSIWYG mode
+4. **Keyboard Shortcut**: Use the keyboard shortcut (see below)
 
 ### Command Palette
 
 1. Open Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`)
 2. Type "Open in WYSIWYG mode"
 3. Select the command to open the active Markdown file in WYSIWYG mode
+
+### Keyboard Shortcut
+
+- **Mac**: `Ctrl+Option+Command+M`
+- **Windows/Linux**: `Ctrl+Alt+M`
+
+Opens the active markdown file in WYSIWYG mode, or switches back to the default editor if already in WYSIWYG mode.
+
+## Configuration
+
+You can customize the font family and font size for the markdown editor. If not specified, the editor will use VS Code's `editor.fontFamily` and `editor.fontSize` settings.
+
+### Font Family
+
+Set a custom font family for the markdown editor:
+
+```json
+{
+  "typedown.editor.fontFamily": "Consolas"
+}
+```
+
+Or use multiple fonts with fallbacks:
+
+```json
+{
+  "typedown.editor.fontFamily": "'Fira Code', 'Courier New', monospace"
+}
+```
+
+If not set, the editor will use VS Code's `editor.fontFamily` setting.
+
+### Font Size
+
+Set a custom font size for the markdown editor:
+
+```json
+{
+  "typedown.editor.fontSize": 16
+}
+```
+
+If not set, the editor will use VS Code's `editor.fontSize` setting (default: 14).
+
+### Example Configuration
+
+Here's a complete example configuration:
+
+```json
+{
+  "typedown.editor.fontFamily": "'Fira Code', monospace",
+  "typedown.editor.fontSize": 16
+}
+```
+
+**Note**: Changes to these settings will be applied immediately when you open or switch to a markdown file in WYSIWYG mode. The settings also update dynamically when VS Code's editor font settings change.
 
 ## Requirements
 

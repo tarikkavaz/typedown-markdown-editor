@@ -23,18 +23,32 @@ export function activate(context: vscode.ExtensionContext) {
 		context.subscriptions.push(vscode.commands.registerCommand(command, callback));
 	}
 
-	registerCommand('typedown.openWysiwygEditor', async (uri?: vscode.Uri) => {
-		console.log('[Typedown] openWysiwygEditor command called', { uri: uri?.toString() });
+	registerCommand('typedown.openWysiwygEditor', async (uri?: vscode.Uri, ...args: any[]) => {
+		console.log('[Typedown] openWysiwygEditor command called', { uri: uri?.toString(), args });
+		
+		// Handle different ways the command might be called
+		// From tab context menu, VS Code might pass the resource as the first argument
+		let resourceUri = uri;
+		if (!resourceUri && args && args.length > 0) {
+			if (args[0] instanceof vscode.Uri) {
+				resourceUri = args[0];
+			} else if (typeof args[0] === 'object' && args[0].resourceUri) {
+				resourceUri = args[0].resourceUri;
+			}
+		}
 		
 		// If URI is provided (from context menu), use it
-		if (uri) {
-			console.log('[Typedown] Opening with provided URI:', uri.toString());
-			await vscode.commands.executeCommand('vscode.openWith', uri, MarkdownEditorProvider.viewType);
+		if (resourceUri) {
+			console.log('[Typedown] Opening with provided URI:', resourceUri.toString());
+			await vscode.commands.executeCommand('vscode.openWith', resourceUri, MarkdownEditorProvider.viewType);
 			return;
 		}
 
-		// Otherwise, try to get URI from active editor
+		// Otherwise, try to get URI from active editor or visible editors
+		// When called from tab context menu, the tab might not be the active editor
 		const activeEditor = vscode.window.activeTextEditor;
+		// Also check visible editors in case the tab is visible but not active
+		const visibleEditors = vscode.window.visibleTextEditors;
 		console.log('[Typedown] Active editor:', {
 			exists: !!activeEditor,
 			languageId: activeEditor?.document.languageId,
@@ -42,27 +56,27 @@ export function activate(context: vscode.ExtensionContext) {
 			fileName: activeEditor?.document.fileName
 		});
 
-		if (activeEditor === undefined) {
-			console.log('[Typedown] No active text editor');
-			vscode.window.showWarningMessage('No active text editor. Please open a markdown file first.');
+		// Try to find a markdown file from active or visible editors
+		let markdownEditor = activeEditor;
+		if (!markdownEditor || 
+			!(markdownEditor.document.languageId === 'markdown' ||
+			  markdownEditor.document.fileName.endsWith('.md') ||
+			  markdownEditor.document.fileName.endsWith('.markdown'))) {
+			// Look through visible editors for a markdown file
+			markdownEditor = visibleEditors.find(editor => 
+				editor.document.languageId === 'markdown' ||
+				editor.document.fileName.endsWith('.md') ||
+				editor.document.fileName.endsWith('.markdown')
+			);
+		}
+
+		if (!markdownEditor) {
+			console.log('[Typedown] No markdown editor found');
+			vscode.window.showWarningMessage('No markdown file found. Please open a .md file first.');
 			return;
 		}
 
-		// Check if it's a markdown file by language ID or file extension
-		const isMarkdown = activeEditor.document.languageId === 'markdown' ||
-			activeEditor.document.fileName.endsWith('.md') ||
-			activeEditor.document.fileName.endsWith('.markdown');
-
-		if (!isMarkdown) {
-			console.log('[Typedown] Active editor is not markdown', {
-				languageId: activeEditor.document.languageId,
-				fileName: activeEditor.document.fileName
-			});
-			vscode.window.showWarningMessage('Active editor is not a markdown file. Please open a .md file first.');
-			return;
-		}
-
-		const documentUri = activeEditor.document.uri;
+		const documentUri = markdownEditor.document.uri;
 		console.log('[Typedown] Opening markdown file in WYSIWYG mode:', documentUri.toString());
 		if (documentUri) {
 			await vscode.commands.executeCommand('vscode.openWith', documentUri, MarkdownEditorProvider.viewType);
