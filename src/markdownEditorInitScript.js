@@ -92,9 +92,34 @@ window.addEventListener('message', (event) => {
 
 			// This state is returned in the call to `vscode.getState` below when a webview is reloaded.
 			vscode.setState({ text });
+			break;
 		}
 		case 'scrollChanged': {
 			// TODO
+			break;
+		}
+		case 'fontSizeChanged': {
+			const fontSize = message.fontSize;
+			console.log('Updating font size to:', fontSize);
+			// Update the font-size-style element with new CSS
+			const styleElement = document.getElementById('font-size-style');
+			if (styleElement) {
+				styleElement.textContent = `
+					.ck.ck-content {
+						font-size: ${fontSize}px !important;
+						-webkit-font-smoothing: subpixel-antialiased;
+						-moz-osx-font-smoothing: auto;
+						text-rendering: geometricPrecision;
+					}
+					.ck-editor__editable {
+						font-size: ${fontSize}px !important;
+						-webkit-font-smoothing: subpixel-antialiased;
+						-moz-osx-font-smoothing: auto;
+						text-rendering: geometricPrecision;
+					}
+				`;
+			}
+			break;
 		}
 	}
 });

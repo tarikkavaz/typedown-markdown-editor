@@ -131,6 +131,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			}
 		);
 
+		// Listen for editor font size configuration changes
+		const onDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration('editor.fontSize')) {
+				const editorConfig = vscode.workspace.getConfiguration('editor');
+				const fontSize = editorConfig.get<number>('fontSize', 14);
+				console.log('Editor font size changed to:', fontSize);
+				webviewPanel.webview.postMessage({
+					type: 'fontSizeChanged',
+					fontSize: fontSize,
+				});
+			}
+		});
+
 		// Make sure we get rid of the listener when our editor is closed.
 		webviewPanel.onDidDispose(() => {
 			console.log('Disposed1');
@@ -145,6 +158,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			changeDocumentSubscription.dispose();
 			saveDocumentSubscription.dispose();
 			onDidChangeTextEditorVisibleRanges.dispose();
+			onDidChangeConfiguration.dispose();
 		});
 
 		// Receive message from the webview.
@@ -178,6 +192,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			)
 		);
 
+		// Read VS Code editor font size configuration
+		const editorConfig = vscode.workspace.getConfiguration('editor');
+		const fontSize = editorConfig.get<number>('fontSize', 14);
+
 		// Use a nonce to only allow a specific script to be run.
 		const nonce = getNonce();
 		const cspSource = webview.cspSource;
@@ -193,6 +211,57 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					<title>Markdown WYSIWYG Editor</title>
 					
 					<style>
+						/* Center and constrain editor width */
+						body {
+							display: flex;
+							flex-direction: column;
+							align-items: center;
+						}
+						
+						#editor {
+							width: 100%;
+							max-width: 91ch;
+							margin: 0 auto;
+						}
+						
+						/* Constrain CKEditor root container */
+						.ck.ck-editor {
+							max-width: 91ch !important;
+							width: 100% !important;
+							margin: 0 auto !important;
+							box-sizing: border-box;
+						}
+						
+						/* Constrain toolbar and all its wrappers */
+						.ck.ck-editor__top,
+						.ck.ck-editor__toolbar-container,
+						.ck.ck-toolbar,
+						.ck.ck-toolbar__items {
+							max-width: 91ch !important;
+							width: 100% !important;
+							box-sizing: border-box;
+						}
+						
+						/* Constrain main content area */
+						.ck.ck-editor__main,
+						.ck.ck-editor__editable-container {
+							max-width: 91ch !important;
+							width: 100% !important;
+							box-sizing: border-box;
+						}
+						
+						/* Center toolbar content */
+						.ck.ck-toolbar {
+							display: flex;
+							justify-content: center;
+						}
+						
+						/* Ensure toolbar groups don't overflow */
+						.ck.ck-toolbar .ck-toolbar__items {
+							max-width: 100% !important;
+							overflow: hidden;
+						}
+						
 						/* Make toolbar icons smaller */
 						.ck-toolbar .ck-button .ck-icon {
 							width: 14px !important;
@@ -208,7 +277,40 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							width: 14px !important;
 							height: 14px !important;
 						}
+						
+						/* Apply VS Code editor font size to content area only */
+						.ck.ck-content {
+							font-size: ${fontSize}px !important;
+							-webkit-font-smoothing: subpixel-antialiased;
+							-moz-osx-font-smoothing: auto;
+							text-rendering: geometricPrecision;
+							width: 100% !important;
+							max-width: 91ch !important;
+							box-sizing: border-box;
+						}
+						
+						.ck-editor__editable {
+							font-size: ${fontSize}px !important;
+							-webkit-font-smoothing: subpixel-antialiased;
+							-moz-osx-font-smoothing: auto;
+							text-rendering: geometricPrecision;
+							width: 100% !important;
+							max-width: 91ch !important;
+							box-sizing: border-box;
+						}
+						
+						/* Match toolbar and content padding for alignment */
+						.ck.ck-toolbar {
+							padding-left: var(--ck-spacing-large, 0.5em) !important;
+							padding-right: var(--ck-spacing-large, 0.5em) !important;
+						}
+						
+						.ck.ck-content {
+							padding-left: var(--ck-spacing-large, 0.5em) !important;
+							padding-right: var(--ck-spacing-large, 0.5em) !important;
+						}
 					</style>
+					<style id="font-size-style"></style>
 				</head>
 				<body>
 					<div id="editor"></div>
