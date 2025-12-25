@@ -44,7 +44,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 		if (activeEditor === undefined) {
 			console.log('[Typedown] No active text editor');
-			vscode.window.showErrorMessage('No active text editor.');
+			vscode.window.showWarningMessage('No active text editor. Please open a markdown file first.');
 			return;
 		}
 
@@ -58,7 +58,7 @@ export function activate(context: vscode.ExtensionContext) {
 				languageId: activeEditor.document.languageId,
 				fileName: activeEditor.document.fileName
 			});
-			vscode.window.showErrorMessage('Active editor is not markdown.');
+			vscode.window.showWarningMessage('Active editor is not a markdown file. Please open a .md file first.');
 			return;
 		}
 

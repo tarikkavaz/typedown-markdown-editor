@@ -90,13 +90,13 @@
 				"command": "typedown.openWysiwygEditor",
 				"key": "ctrl+alt+m",
 				"mac": "ctrl+alt+cmd+m",
-				"when": "resourceLangId == markdown && !typedown.editorIsActive"
+				"when": "!typedown.editorIsActive"
 			},
 			{
 				"command": "typedown.openDefaultEditor",
 				"key": "ctrl+alt+m",
 				"mac": "ctrl+alt+cmd+m",
-				"when": "resourceLangId == markdown && typedown.editorIsActive"
+				"when": "typedown.editorIsActive"
 			}
 		],
 		"configuration": {
