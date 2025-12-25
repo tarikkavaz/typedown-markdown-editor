@@ -98,7 +98,24 @@
 				"mac": "ctrl+alt+cmd+m",
 				"when": "resourceLangId == markdown && typedown.editorIsActive"
 			}
-		]
+		],
+		"configuration": {
+			"title": "Typedown",
+			"properties": {
+				"typedown.editor.fontFamily": {
+					"type": "string",
+					"default": null,
+					"description": "Font family for the markdown editor. If not set, uses VS Code's editor.fontFamily setting.",
+					"markdownDescription": "Font family for the markdown editor. If not set, uses VS Code's `editor.fontFamily` setting."
+				},
+				"typedown.editor.fontSize": {
+					"type": "number",
+					"default": null,
+					"description": "Font size for the markdown editor. If not set, uses VS Code's editor.fontSize setting.",
+					"markdownDescription": "Font size for the markdown editor. If not set, uses VS Code's `editor.fontSize` setting."
+				}
+			}
+		}
 	},
 	"scripts": {
 		"vscode:prepublish": "webpack --mode production",

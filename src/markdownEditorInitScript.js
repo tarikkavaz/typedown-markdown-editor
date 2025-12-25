@@ -98,20 +98,25 @@ window.addEventListener('message', (event) => {
 			// TODO
 			break;
 		}
-		case 'fontSizeChanged': {
+		case 'fontSizeChanged':
+		case 'fontChanged': {
 			const fontSize = message.fontSize;
-			console.log('Updating font size to:', fontSize);
+			const fontFamily = message.fontFamily || '';
+			console.log('Updating font to:', { fontSize, fontFamily });
 			// Update the font-size-style element with new CSS
 			const styleElement = document.getElementById('font-size-style');
 			if (styleElement) {
+				const fontFamilyCss = fontFamily ? `"${fontFamily}", ` : '';
 				styleElement.textContent = `
 					.ck.ck-content {
+						font-family: ${fontFamilyCss}monospace !important;
 						font-size: ${fontSize}px !important;
 						-webkit-font-smoothing: subpixel-antialiased;
 						-moz-osx-font-smoothing: auto;
 						text-rendering: geometricPrecision;
 					}
 					.ck-editor__editable {
+						font-family: ${fontFamilyCss}monospace !important;
 						font-size: ${fontSize}px !important;
 						-webkit-font-smoothing: subpixel-antialiased;
 						-moz-osx-font-smoothing: auto;

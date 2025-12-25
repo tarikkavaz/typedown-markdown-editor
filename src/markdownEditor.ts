@@ -131,15 +131,23 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			}
 		);
 
-		// Listen for editor font size configuration changes
+		// Listen for font configuration changes (both extension and VS Code editor settings)
 		const onDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration('editor.fontSize')) {
+			if (e.affectsConfiguration('typedown.editor.fontFamily') || 
+				e.affectsConfiguration('typedown.editor.fontSize') ||
+				e.affectsConfiguration('editor.fontFamily') ||
+				e.affectsConfiguration('editor.fontSize')) {
+				const typedownConfig = vscode.workspace.getConfiguration('typedown.editor');
 				const editorConfig = vscode.workspace.getConfiguration('editor');
-				const fontSize = editorConfig.get<number>('fontSize', 14);
-				console.log('Editor font size changed to:', fontSize);
+				
+				const fontSize = typedownConfig.get<number>('fontSize') ?? editorConfig.get<number>('fontSize', 14);
+				const fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+				
+				console.log('Font configuration changed:', { fontSize, fontFamily });
 				webviewPanel.webview.postMessage({
-					type: 'fontSizeChanged',
+					type: 'fontChanged',
 					fontSize: fontSize,
+					fontFamily: fontFamily,
 				});
 			}
 		});
@@ -192,9 +200,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			)
 		);
 
-		// Read VS Code editor font size configuration
+		// Read font configuration - extension config takes precedence over VS Code editor config
+		const typedownConfig = vscode.workspace.getConfiguration('typedown.editor');
 		const editorConfig = vscode.workspace.getConfiguration('editor');
-		const fontSize = editorConfig.get<number>('fontSize', 14);
+		
+		const fontSize = typedownConfig.get<number>('fontSize') ?? editorConfig.get<number>('fontSize', 14);
+		const fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
 
 		// Use a nonce to only allow a specific script to be run.
 		const nonce = getNonce();
@@ -278,8 +289,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							height: 14px !important;
 						}
 						
-						/* Apply VS Code editor font size to content area only */
+						/* Apply font family and size to content area only */
 						.ck.ck-content {
+							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
 							font-size: ${fontSize}px !important;
 							-webkit-font-smoothing: subpixel-antialiased;
 							-moz-osx-font-smoothing: auto;
@@ -290,6 +302,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						}
 						
 						.ck-editor__editable {
+							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
 							font-size: ${fontSize}px !important;
 							-webkit-font-smoothing: subpixel-antialiased;
 							-moz-osx-font-smoothing: auto;
