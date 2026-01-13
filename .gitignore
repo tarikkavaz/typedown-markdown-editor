@@ -6,3 +6,4 @@ _tools
 dist/
 *.log
 .vscode-test/
+.vscode/todos.*
