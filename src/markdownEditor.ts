@@ -308,6 +308,30 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							box-sizing: border-box;
 						}
 						
+						/* Fixed toolbar wrapper - will be created by JavaScript */
+						.typedown-toolbar-wrapper {
+							position: fixed !important;
+							top: 0 !important;
+							left: 50% !important;
+							transform: translateX(-50%) !important;
+							z-index: 1000 !important;
+							display: flex !important;
+							justify-content: center !important;
+							background-color: var(--vscode-editor-background) !important;
+							pointer-events: none !important;
+							max-width: ${editorWidth} !important;
+							box-sizing: border-box !important;
+						}
+						
+						.typedown-toolbar-wrapper .toastui-editor-defaultUI-toolbar {
+							pointer-events: all !important;
+						}
+						
+						/* Add padding to body to account for fixed toolbar */
+						body.has-fixed-toolbar {
+							padding-top: 45px !important;
+						}
+						
 						/* TUI Editor container styles */
 						.toastui-editor-defaultUI {
 							max-width: ${editorWidth} !important;
@@ -326,10 +350,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							box-sizing: border-box;
 							background-color: var(--vscode-editor-background) !important;
 							border-bottom: 1px solid var(--typedown-theme-separator) !important;
-							position: sticky !important;
-							top: 0 !important;
-							z-index: 100 !important;
 							flex-shrink: 0 !important;
+						}
+						
+						/* When toolbar is moved to fixed wrapper */
+						.typedown-toolbar-wrapper .toastui-editor-defaultUI-toolbar {
+							position: relative !important;
+							top: auto !important;
+							z-index: auto !important;
 						}
 						
 						.toastui-editor-contents {

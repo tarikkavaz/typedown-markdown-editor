@@ -118,30 +118,67 @@ function setupEditorHandlers() {
 		editor.dirty = true;
 	});
 	
-	// Ensure toolbar stays at the top when scrolling
-	// This helper ensures sticky positioning works correctly
+	// Move toolbar outside editor container and make it fixed at top
 	setTimeout(() => {
 		const toolbar = document.querySelector('.toastui-editor-defaultUI-toolbar');
+		const editor = document.querySelector('#editor');
 		
-		if (toolbar) {
-			// Verify and enforce sticky positioning
-			const ensureSticky = () => {
-				const computedStyle = window.getComputedStyle(toolbar);
-				if (computedStyle.position !== 'sticky') {
-					toolbar.style.position = 'sticky';
-					toolbar.style.top = '0';
-					toolbar.style.zIndex = '100';
+		if (toolbar && editor && !document.querySelector('.typedown-toolbar-wrapper')) {
+			// Create wrapper for fixed toolbar
+			const toolbarWrapper = document.createElement('div');
+			toolbarWrapper.className = 'typedown-toolbar-wrapper';
+			
+			// Move the actual toolbar element (not clone) to preserve event handlers
+			toolbarWrapper.appendChild(toolbar);
+			
+			// Insert wrapper at the beginning of body
+			document.body.insertBefore(toolbarWrapper, document.body.firstChild);
+			
+			// Add padding class to body
+			document.body.classList.add('has-fixed-toolbar');
+			
+			// Update width and max-width to match editor (centering is handled by CSS)
+			const updateToolbarPosition = () => {
+				const editorRect = editor.getBoundingClientRect();
+				const editorWidth = editorRect.width;
+				const editorComputedStyle = window.getComputedStyle(editor);
+				const editorMaxWidth = editorComputedStyle.maxWidth;
+				
+				// Set wrapper width and max-width to match editor
+				toolbarWrapper.style.width = editorWidth + 'px';
+				if (editorMaxWidth && editorMaxWidth !== 'none') {
+					toolbarWrapper.style.maxWidth = editorMaxWidth;
 				}
 			};
 			
-			// Check immediately and after a short delay to ensure DOM is ready
-			ensureSticky();
-			setTimeout(ensureSticky, 100);
+			// Initial update
+			updateToolbarPosition();
 			
-			// Re-check on scroll to ensure it stays sticky
-			window.addEventListener('scroll', ensureSticky, { passive: true });
+			// Update on resize and scroll (in case editor position changes)
+			window.addEventListener('resize', updateToolbarPosition, { passive: true });
+			window.addEventListener('scroll', updateToolbarPosition, { passive: true });
+			
+			// Use MutationObserver to watch for editor position changes
+			const observer = new MutationObserver(updateToolbarPosition);
+			observer.observe(document.body, {
+				attributes: true,
+				attributeFilter: ['style', 'class'],
+				childList: false,
+				subtree: false
+			});
+			
+			// Also observe the editor container for changes
+			const editorObserver = new MutationObserver(updateToolbarPosition);
+			editorObserver.observe(editor, {
+				attributes: true,
+				attributeFilter: ['style', 'class'],
+				childList: true,
+				subtree: false
+			});
+			
+			console.log('Toolbar moved to fixed position at top');
 		}
-	}, 300);
+	}, 500);
 }
 
 // Handle messages sent from the extension to the webview
