@@ -249,6 +249,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		
 		const fontSize = typedownConfig.get<number>('fontSize') ?? editorConfig.get<number>('fontSize', 14);
 		const fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+		const editorWidth = typedownConfig.get<string>('width', '91ch');
 
 		// Use a nonce to only allow a specific script to be run.
 		const nonce = getNonce();
@@ -293,7 +294,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						
 						#editor {
 							width: 100%;
-							max-width: 120ch;
+							max-width: ${editorWidth};
 							margin: 0 auto;
 							padding: 0;
 							box-sizing: border-box;
@@ -301,16 +302,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						
 						/* TUI Editor container styles */
 						.toastui-editor-defaultUI {
-							max-width: 120ch !important;
+							max-width: ${editorWidth} !important;
 							width: 100% !important;
 							margin: 0 auto !important;
 							box-sizing: border-box;
+							border: none !important;
+							position: relative !important;
 						}
 						
 						.toastui-editor-defaultUI-toolbar {
-							max-width: 120ch !important;
+							max-width: ${editorWidth} !important;
 							width: 100% !important;
 							box-sizing: border-box;
+							background-color: var(--vscode-editor-background) !important;
+							border-bottom: 1px solid var(--typedown-theme-separator) !important;
 						}
 						
 						.toastui-editor-contents {
@@ -319,20 +324,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							-webkit-font-smoothing: subpixel-antialiased;
 							-moz-osx-font-smoothing: auto;
 							text-rendering: geometricPrecision;
-							max-width: 120ch !important;
+							max-width: ${editorWidth} !important;
 							box-sizing: border-box;
 						}
 						
 						.toastui-editor {
-							max-width: 120ch !important;
+							max-width: ${editorWidth} !important;
 							width: 100% !important;
 							box-sizing: border-box;
-						}
-						
-						/* Theme customization for TUI Editor */
-						.toastui-editor-defaultUI-toolbar {
-							background-color: var(--vscode-editor-background) !important;
-							border-bottom: 1px solid var(--typedown-theme-separator) !important;
 						}
 						
 						.toastui-editor-defaultUI .toastui-editor-ww-container {
@@ -341,6 +340,20 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						}
 						
 						.toastui-editor-contents {
+							color: var(--vscode-editor-foreground) !important;
+						}
+						
+						/* Override hardcoded text colors to respect theme */
+						.toastui-editor-contents p,
+						.toastui-editor-contents h1,
+						.toastui-editor-contents h2,
+						.toastui-editor-contents h3,
+						.toastui-editor-contents h4,
+						.toastui-editor-contents h5,
+						.toastui-editor-contents h6,
+						.toastui-editor-contents li,
+						.toastui-editor-contents blockquote,
+						.toastui-editor-contents a {
 							color: var(--vscode-editor-foreground) !important;
 						}
 						
@@ -378,6 +391,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							opacity: 0.5 !important;
 						}
 						
+						/* Hide mode switch footer (Markdown/WYSIWYG tabs) */
+						.toastui-editor-mode-switch {
+							display: none !important;
+						}
+						
 						/* Table styles */
 						.toastui-editor-contents table {
 							border-color: var(--typedown-theme-table-border) !important;
@@ -387,6 +405,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.toastui-editor-contents table th {
 							border-color: var(--typedown-theme-table-border) !important;
 							padding: 8px 12px !important;
+						}
+						
+						.toastui-editor-contents table th {
+							background-color: transparent !important;
+							color: var(--vscode-editor-foreground) !important;
+							font-weight: bold !important;
+						}
+						
+						.toastui-editor-contents table th p {
+							color: var(--vscode-editor-foreground) !important;
 						}
 						
 						/* Horizontal rule styles */
