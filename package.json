@@ -20,7 +20,7 @@
 		"markdown",
 		"editor",
 		"wysiwyg",
-		"ckeditor"
+		"tui-editor"
 	],
 	"activationEvents": [
 		"onCustomEditor:typedown.markdownEditor",
@@ -118,7 +118,8 @@
 		}
 	},
 	"scripts": {
-		"vscode:prepublish": "NODE_ENV=production webpack --mode production",
+		"build:editor": "node src/build-editor-bundle.js",
+		"vscode:prepublish": "npm run build:editor && NODE_ENV=production webpack --mode production",
 		"webpack": "webpack --mode development",
 		"webpack-dev": "webpack --mode development --watch",
 		"test-compile": "tsc -p ./",
@@ -129,6 +130,7 @@
 		"@types/vscode": "^1.32.0",
 		"@typescript-eslint/eslint-plugin": "^6.0.0",
 		"@typescript-eslint/parser": "^6.0.0",
+		"esbuild": "^0.19.0",
 		"eslint": "^8.0.0",
 		"ts-loader": "^9.5.0",
 		"typescript": "^5.0.0",
@@ -136,6 +138,9 @@
 		"webpack-cli": "^5.1.0"
 	},
 	"dependencies": {
-		"prettier": "^3.0.0"
+		"prettier": "^3.0.0",
+		"@toast-ui/editor": "^3.2.2",
+		"@toast-ui/editor-plugin-code-syntax-highlight": "^3.0.0-alpha.0",
+		"highlight.js": "^11.9.0"
 	}
 }

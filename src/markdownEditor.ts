@@ -108,7 +108,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		function updateWebview() {
 			let text = document.getText();
 
-			// Change EOL to \n because that's what CKEditor5 uses internally
+			// Change EOL to \n for consistency
 			const normalizedText = text.replace(/(?:\r\n|\r|\n)/g, '\n');
 
 			// Don't update if we just updated from webview and content hasn't changed externally
@@ -236,11 +236,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const initScriptUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'src', 'markdownEditorInitScript.js')
 		);
-		const ckeditorUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(
-				this.context.extensionUri,
-				...'ckeditor5-build-markdown/build/ckeditor.js'.split('/')
-			)
+		const tuiEditorCssUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'tui-editor.css')
+		);
+		const tuiEditorJsUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'tui-editor-bundle.js')
 		);
 
 		// Read font configuration - extension config takes precedence over VS Code editor config
@@ -258,11 +258,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		return html/* html */ `<!DOCTYPE html>
 			<html lang="en">
 				<head>
-					<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}'; style-src 'unsafe-inline';" />
+					<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}' ${cspSource}; style-src 'unsafe-inline' ${cspSource};" />
 
 					<meta charset="UTF-8" />
 					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 					<title>Markdown WYSIWYG Editor</title>
+					<link rel="stylesheet" href="${tuiEditorCssUri}" />
 					
 					<style>
 						:root {
@@ -285,230 +286,142 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							display: flex;
 							flex-direction: column;
 							align-items: center;
+							margin: 0;
+							padding: 0;
+							background-color: var(--vscode-editor-background);
 						}
 						
 						#editor {
 							width: 100%;
-							max-width: 91ch;
+							max-width: 120ch;
 							margin: 0 auto;
 							padding: 0;
 							box-sizing: border-box;
 						}
 						
-						/* Constrain CKEditor root container */
-						.ck.ck-editor {
-							max-width: 91ch !important;
+						/* TUI Editor container styles */
+						.toastui-editor-defaultUI {
+							max-width: 120ch !important;
 							width: 100% !important;
 							margin: 0 auto !important;
 							box-sizing: border-box;
 						}
 						
-						/* Constrain toolbar and all its wrappers */
-						.ck.ck-editor__top,
-						.ck.ck-editor__toolbar-container,
-						.ck.ck-toolbar,
-						.ck.ck-toolbar__items {
-							max-width: 91ch !important;
+						.toastui-editor-defaultUI-toolbar {
+							max-width: 120ch !important;
 							width: 100% !important;
 							box-sizing: border-box;
 						}
 						
-						/* Constrain main content area */
-						.ck.ck-editor__main,
-						.ck.ck-editor__editable-container {
-							max-width: 91ch !important;
+						.toastui-editor-contents {
+							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
+							font-size: ${fontSize}px !important;
+							-webkit-font-smoothing: subpixel-antialiased;
+							-moz-osx-font-smoothing: auto;
+							text-rendering: geometricPrecision;
+							max-width: 120ch !important;
+							box-sizing: border-box;
+						}
+						
+						.toastui-editor {
+							max-width: 120ch !important;
 							width: 100% !important;
 							box-sizing: border-box;
 						}
 						
-						/* Center toolbar content */
-						.ck.ck-toolbar {
-							display: flex;
-							justify-content: center;
+						/* Theme customization for TUI Editor */
+						.toastui-editor-defaultUI-toolbar {
+							background-color: var(--vscode-editor-background) !important;
+							border-bottom: 1px solid var(--typedown-theme-separator) !important;
 						}
 						
-						/* Ensure toolbar groups don't overflow */
-						.ck.ck-toolbar .ck-toolbar__items {
-							max-width: 100% !important;
-							overflow: visible !important;
+						.toastui-editor-defaultUI .toastui-editor-ww-container {
+							background-color: var(--vscode-editor-background) !important;
+							color: var(--vscode-editor-foreground) !important;
 						}
 						
-						/* Ensure dropdowns are visible and properly positioned */
-						.ck.ck-dropdown__panel {
-							z-index: 10000 !important;
-							position: absolute !important;
-							overflow: visible !important;
-							max-height: 400px !important;
-							overflow-y: auto !important;
-							overflow-x: hidden !important;
-							border-color: var(--typedown-theme-active-border) !important;
-							outline-color: var(--typedown-theme-active-border) !important;
+						.toastui-editor-contents {
+							color: var(--vscode-editor-foreground) !important;
 						}
 						
-						/* Style dropdown panel border/outline */
-						.ck.ck-dropdown__panel.ck-dropdown__panel {
-							border: 1px solid var(--typedown-theme-active-border) !important;
-							box-shadow: 0 2px 8px var(--typedown-theme-active-border)33 !important;
+						/* Toolbar button styling */
+						.toastui-editor-defaultUI-toolbar button {
+							background-color: transparent !important;
+							border: 1px solid transparent !important;
+							color: var(--vscode-foreground) !important;
+							border-radius: 3px !important;
+							transition: background-color 0.2s, border-color 0.2s !important;
 						}
 						
-						/* Make dropdown list scrollable */
-						.ck.ck-dropdown__panel .ck-list {
-							max-height: 400px !important;
-							overflow-y: auto !important;
-							overflow-x: hidden !important;
+						.toastui-editor-defaultUI-toolbar button:not(:disabled):hover {
+							background-color: var(--vscode-list-hoverBackground) !important;
+							border-color: var(--vscode-list-hoverBackground) !important;
 						}
 						
-						/* Style dropdown button when open */
-						.ck.ck-dropdown.ck-on .ck-button {
-							border-color: var(--typedown-theme-active-border) !important;
+						.toastui-editor-defaultUI-toolbar button:not(:disabled):active {
+							background-color: var(--vscode-list-activeSelectionBackground) !important;
+							border-color: var(--vscode-list-activeSelectionBackground) !important;
 						}
 						
-						/* Style dropdown button hover/focus */
-						.ck.ck-dropdown .ck-button:hover,
-						.ck.ck-dropdown .ck-button:focus {
-							border-color: var(--typedown-theme-active-border) !important;
-							outline-color: var(--typedown-theme-active-border) !important;
+						.toastui-editor-defaultUI-toolbar button:not(:disabled).active {
+							background-color: var(--vscode-button-background) !important;
+							border-color: var(--vscode-button-background) !important;
+							color: var(--vscode-button-foreground) !important;
 						}
 						
-						/* Style toolbar separators */
-						.ck.ck-toolbar .ck-toolbar__separator {
+						.toastui-editor-toolbar-icons {
+							background-color: transparent !important;
+						}
+						
+						.toastui-editor-toolbar-divider {
 							background-color: var(--typedown-theme-separator) !important;
 							opacity: 0.5 !important;
 						}
 						
-						/* Style horizontal rules (HR) in content */
-						.ck.ck-content hr {
+						/* Table styles */
+						.toastui-editor-contents table {
+							border-color: var(--typedown-theme-table-border) !important;
+						}
+						
+						.toastui-editor-contents table td,
+						.toastui-editor-contents table th {
+							border-color: var(--typedown-theme-table-border) !important;
+							padding: 8px 12px !important;
+						}
+						
+						/* Horizontal rule styles */
+						.toastui-editor-contents hr {
 							border-color: var(--typedown-theme-hr-border) !important;
-							background-color: var(--typedown-theme-hr-border) !important;
 							opacity: 0.6 !important;
 						}
 						
-						.ck.ck-content hr::before {
-							border-color: var(--typedown-theme-hr-border) !important;
+						/* Code block styles */
+						.toastui-editor-contents .toastui-editor-ww-code-block {
+							background-color: var(--vscode-textBlockQuote-background, var(--vscode-editor-background)) !important;
+							border: 1px solid var(--typedown-theme-table-border) !important;
+							border-radius: 4px !important;
+							padding: 1em !important;
+							margin: 0.5em 0 !important;
 						}
 						
-						.ck.ck-content hr::after {
-							border-color: var(--typedown-theme-hr-border) !important;
-						}
-						
-						.ck.ck-content table,
-						.ck-editor__editable table {
-							border-color: var(--typedown-theme-table-border) !important;
-						
-						}
-						
-						/* Add padding to table cells to prevent content from touching edges */
-						.ck.ck-content table td,
-						.ck.ck-content table th,
-						.ck-editor__editable table td,
-						.ck-editor__editable table th {
-							padding: 8px 12px !important;
-							border-color: var(--typedown-theme-table-border) !important;
-						}
-						
-						.ck.ck-content table td,
-						.ck.ck-content table th,
-						.ck-editor__editable table td,
-						.ck-editor__editable table th {
-							border-color: var(--typedown-theme-table-border) !important;
-						}
-						
-						.ck.ck-content table thead th,
-						.ck.ck-content table tbody th,
-						.ck-editor__editable table thead th,
-						.ck-editor__editable table tbody th {
-							border-color: var(--typedown-theme-table-border) !important;
-						}
-						
-						.ck.ck-content table tbody td,
-						.ck-editor__editable table tbody td {
-							border-color: var(--typedown-theme-table-border) !important;
-						}
-						
-						/* Ensure table containers allow horizontal overflow */
-						.ck.ck-content,
-						.ck-editor__editable {
-							overflow-x: visible !important;
-						}
-						
-						/* Allow parent containers to overflow so tables can break out */
-						.ck.ck-editor__editable-container {
-							overflow-x: visible !important;
-						}
-						
-						.ck.ck-editor__main {
-							overflow-x: visible !important;
-						}
-						
-						/* Ensure body and editor container allow overflow */
-						body {
-							overflow-x: visible !important;
-						}
-						
-						#editor {
-							overflow-x: visible !important;
-						}
-						
-						.ck.ck-toolbar .ck-dropdown {
-							overflow: visible !important;
-						}
-						
-						.ck.ck-editor__top {
-							overflow: visible !important;
-						}
-						
-						.ck.ck-editor__toolbar-container {
-							overflow: visible !important;
-						}
-						
-						/* Make toolbar icons smaller */
-						.ck-toolbar .ck-button .ck-icon {
-							width: 14px !important;
-							height: 14px !important;
-						}
-						
-						.ck-toolbar .ck-dropdown .ck-button .ck-icon {
-							width: 14px !important;
-							height: 14px !important;
-						}
-						
-						.ck-toolbar .ck-button .ck-icon svg {
-							width: 14px !important;
-							height: 14px !important;
-						}
-						
-						/* Apply font family and size to content area only */
-						.ck.ck-content {
+						.toastui-editor-contents .toastui-editor-ww-code-block pre {
+							background-color: transparent !important;
+							color: var(--vscode-editor-foreground) !important;
+							margin: 0 !important;
+							padding: 0 !important;
 							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
-							font-size: ${fontSize}px !important;
-							-webkit-font-smoothing: subpixel-antialiased;
-							-moz-osx-font-smoothing: auto;
-							text-rendering: geometricPrecision;
-							width: 100% !important;
-							max-width: 91ch !important;
-							box-sizing: border-box;
 						}
 						
-						.ck-editor__editable {
+						.toastui-editor-contents .toastui-editor-ww-code-block code {
+							background-color: transparent !important;
+							color: var(--vscode-editor-foreground) !important;
 							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
-							font-size: ${fontSize}px !important;
-							-webkit-font-smoothing: subpixel-antialiased;
-							-moz-osx-font-smoothing: auto;
-							text-rendering: geometricPrecision;
-							width: 100% !important;
-							max-width: 91ch !important;
-							box-sizing: border-box;
 						}
 						
-						/* Match toolbar and content padding for alignment */
-						.ck.ck-toolbar {
-							padding-left: var(--ck-spacing-large, 0.5em) !important;
-							padding-right: var(--ck-spacing-large, 0.5em) !important;
-						}
-						
-						.ck.ck-content {
-							padding-left: var(--ck-spacing-large, 0.5em) !important;
-							padding-right: var(--ck-spacing-large, 0.5em) !important;
+						.toastui-editor-contents .toastui-editor-ww-code-block:after {
+							background-color: var(--vscode-editor-background) !important;
+							color: var(--vscode-foreground) !important;
+							border: 1px solid var(--typedown-theme-table-border) !important;
 						}
 					</style>
 					<style id="font-size-style"></style>
@@ -516,7 +429,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				<body>
 					<div id="editor"></div>
 
-					<script nonce="${nonce}" src="${ckeditorUri}"></script>
+					<script nonce="${nonce}" src="${tuiEditorJsUri}"></script>
 					<script nonce="${nonce}">
 						// Try to read VS Code theme CSS variables if available
 						// VS Code webviews may have access to some CSS variables
@@ -528,6 +441,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							const vscodeVars = {
 								'--vscode-foreground': computedStyle.getPropertyValue('--vscode-foreground'),
 								'--vscode-editor-foreground': computedStyle.getPropertyValue('--vscode-editor-foreground'),
+								'--vscode-editor-background': computedStyle.getPropertyValue('--vscode-editor-background'),
 								'--vscode-editorGroup-border': computedStyle.getPropertyValue('--vscode-editorGroup-border'),
 								'--vscode-editorWidget-border': computedStyle.getPropertyValue('--vscode-editorWidget-border'),
 								'--vscode-button-background': computedStyle.getPropertyValue('--vscode-button-background'),
@@ -535,6 +449,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 								'--vscode-dropdown-background': computedStyle.getPropertyValue('--vscode-dropdown-background'),
 								'--vscode-dropdown-foreground': computedStyle.getPropertyValue('--vscode-dropdown-foreground'),
 								'--vscode-dropdown-border': computedStyle.getPropertyValue('--vscode-dropdown-border'),
+								'--vscode-list-hoverBackground': computedStyle.getPropertyValue('--vscode-list-hoverBackground'),
 							};
 							
 							// Update our CSS variables with VS Code theme variables if available
@@ -570,16 +485,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 								root.style.setProperty('--typedown-theme-dropdown-border', vscodeVars['--vscode-dropdown-border']);
 							}
 						})();
-						
-						MarkdownEditor.create(document.querySelector('#editor'))
-							.then((editor) => {
-								window.editor = editor;
-								editor.timeLastModified = new Date();
-								console.log('CKEditor instance:', editor);
-							})
-							.catch((error) => {
-								console.error('CKEditor Initialization Error:', error);
-							});
 					</script>
 					<script nonce="${nonce}" src="${initScriptUri}"></script>
 				</body>
