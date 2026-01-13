@@ -151,15 +151,138 @@ function setupEditorHandlers() {
 				}
 			};
 			
+			// Ensure dropdowns and popups are positioned correctly relative to fixed toolbar
+			const ensureDropdownsVisible = () => {
+				// Find all dropdowns and popups that are currently visible
+				const dropdowns = document.querySelectorAll('.toastui-editor-dropdown-toolbar, .toastui-editor-popup');
+				dropdowns.forEach(dropdown => {
+					// Check if dropdown is actually visible (not hidden)
+					const computedStyle = window.getComputedStyle(dropdown);
+					const isVisible = computedStyle.display !== 'none' && 
+									  computedStyle.visibility !== 'hidden' && 
+									  computedStyle.opacity !== '0';
+					
+					if (!isVisible) {
+						return; // Skip hidden dropdowns
+					}
+					
+					// Only set z-index for visible dropdowns
+					dropdown.style.zIndex = '1001';
+					
+					// If dropdown is not inside toolbar wrapper, try to position it correctly
+					if (!toolbarWrapper.contains(dropdown)) {
+						// Try to find the active/clicked button that triggered this dropdown
+						// Check for buttons with active class or recent click
+						const toolbarButtons = toolbar.querySelectorAll('button');
+						let targetButton = null;
+						
+						// First, try to find an active button
+						const activeButton = toolbar.querySelector('button.active, button:focus');
+						if (activeButton) {
+							targetButton = activeButton;
+						} else {
+							// Find the closest toolbar button based on position
+							let closestButton = null;
+							let minDistance = Infinity;
+							
+							toolbarButtons.forEach(button => {
+								const buttonRect = button.getBoundingClientRect();
+								const dropdownRect = dropdown.getBoundingClientRect();
+								
+								// Calculate distance (both horizontal and vertical)
+								const horizontalDist = Math.abs(buttonRect.left - dropdownRect.left);
+								const verticalDist = dropdownRect.top - buttonRect.bottom;
+								
+								// If dropdown is near this button horizontally and below it
+								if (horizontalDist < 150 && verticalDist > -50 && verticalDist < 200) {
+									const totalDist = Math.sqrt(horizontalDist * horizontalDist + verticalDist * verticalDist);
+									if (totalDist < minDistance) {
+										minDistance = totalDist;
+										closestButton = button;
+									}
+								}
+							});
+							
+							if (closestButton) {
+								targetButton = closestButton;
+							}
+						}
+						
+						// Position dropdown relative to the target button
+						if (targetButton) {
+							const buttonRect = targetButton.getBoundingClientRect();
+							dropdown.style.position = 'fixed';
+							dropdown.style.top = (buttonRect.bottom + window.scrollY) + 'px';
+							dropdown.style.left = (buttonRect.left + window.scrollX) + 'px';
+						}
+					}
+				});
+			};
+			
+			// Watch for dropdown creation and attribute changes (for show/hide)
+			const dropdownObserver = new MutationObserver((mutations) => {
+				let shouldUpdate = false;
+				mutations.forEach((mutation) => {
+					// Check for new dropdowns
+					mutation.addedNodes.forEach((node) => {
+						if (node.nodeType === 1) { // Element node
+							if (node.classList && (
+								node.classList.contains('toastui-editor-dropdown-toolbar') ||
+								node.classList.contains('toastui-editor-popup')
+							)) {
+								shouldUpdate = true;
+							}
+							// Also check children
+							const dropdowns = node.querySelectorAll?.('.toastui-editor-dropdown-toolbar, .toastui-editor-popup');
+							if (dropdowns && dropdowns.length > 0) {
+								shouldUpdate = true;
+							}
+						}
+					});
+					// Check for style/display changes (show/hide)
+					if (mutation.type === 'attributes' && 
+						(mutation.attributeName === 'style' || mutation.attributeName === 'class')) {
+						const target = mutation.target;
+						if (target.classList && (
+							target.classList.contains('toastui-editor-dropdown-toolbar') ||
+							target.classList.contains('toastui-editor-popup')
+						)) {
+							shouldUpdate = true;
+						}
+					}
+				});
+				if (shouldUpdate) {
+					setTimeout(ensureDropdownsVisible, 10);
+				}
+			});
+			
+			// Observe document body for new dropdowns and attribute changes
+			dropdownObserver.observe(document.body, {
+				childList: true,
+				subtree: true,
+				attributes: true,
+				attributeFilter: ['style', 'class']
+			});
+			
 			// Initial update
 			updateToolbarPosition();
+			setTimeout(ensureDropdownsVisible, 100);
 			
 			// Update on resize and scroll (in case editor position changes)
-			window.addEventListener('resize', updateToolbarPosition, { passive: true });
-			window.addEventListener('scroll', updateToolbarPosition, { passive: true });
+			window.addEventListener('resize', () => {
+				updateToolbarPosition();
+				setTimeout(ensureDropdownsVisible, 10);
+			}, { passive: true });
+			window.addEventListener('scroll', () => {
+				updateToolbarPosition();
+				setTimeout(ensureDropdownsVisible, 10);
+			}, { passive: true });
 			
 			// Use MutationObserver to watch for editor position changes
-			const observer = new MutationObserver(updateToolbarPosition);
+			const observer = new MutationObserver(() => {
+				updateToolbarPosition();
+				setTimeout(ensureDropdownsVisible, 10);
+			});
 			observer.observe(document.body, {
 				attributes: true,
 				attributeFilter: ['style', 'class'],
@@ -168,7 +291,10 @@ function setupEditorHandlers() {
 			});
 			
 			// Also observe the editor container for changes
-			const editorObserver = new MutationObserver(updateToolbarPosition);
+			const editorObserver = new MutationObserver(() => {
+				updateToolbarPosition();
+				setTimeout(ensureDropdownsVisible, 10);
+			});
 			editorObserver.observe(editor, {
 				attributes: true,
 				attributeFilter: ['style', 'class'],

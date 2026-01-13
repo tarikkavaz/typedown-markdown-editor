@@ -317,14 +317,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							z-index: 1000 !important;
 							display: flex !important;
 							justify-content: center !important;
-							background-color: var(--vscode-editor-background) !important;
+							background-color: transparent !important;
 							pointer-events: none !important;
 							max-width: ${editorWidth} !important;
 							box-sizing: border-box !important;
+							overflow: visible !important;
 						}
 						
 						.typedown-toolbar-wrapper .toastui-editor-defaultUI-toolbar {
 							pointer-events: all !important;
+							position: relative !important;
+							overflow: visible !important;
 						}
 						
 						/* Add padding to body to account for fixed toolbar */
@@ -358,7 +361,18 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							position: relative !important;
 							top: auto !important;
 							z-index: auto !important;
+							overflow: visible !important;
 						}
+						
+						/* Ensure dropdowns and popups are visible when toolbar is fixed */
+						.typedown-toolbar-wrapper .toastui-editor-dropdown-toolbar,
+						.typedown-toolbar-wrapper .toastui-editor-popup {
+							position: absolute !important;
+							z-index: 1001 !important;
+						}
+						
+						/* Ensure dropdowns and popups have high z-index - only when they're actually shown */
+						/* Don't force visibility - let TUI Editor control show/hide */
 						
 						.toastui-editor-contents {
 							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
@@ -458,6 +472,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.toastui-editor-dropdown-toolbar {
 							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
 							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
+							z-index: 1001 !important;
+							position: absolute !important;
 						}
 						
 						.toastui-editor-dropdown-toolbar button {
@@ -489,6 +505,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
 							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
 							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+							z-index: 1001 !important;
+							position: absolute !important;
 						}
 						
 						.toastui-editor-popup-body {
