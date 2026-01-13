@@ -118,56 +118,30 @@ function setupEditorHandlers() {
 		editor.dirty = true;
 	});
 	
-	// Make toolbar sticky - listen to both body scroll and content scroll
+	// Ensure toolbar stays at the top when scrolling
+	// This helper ensures sticky positioning works correctly
 	setTimeout(() => {
 		const toolbar = document.querySelector('.toastui-editor-defaultUI-toolbar');
-		const defaultUI = document.querySelector('.toastui-editor-defaultUI');
 		
-		if (toolbar && defaultUI) {
-			let isSticky = false;
-			
-			function makeToolbarSticky() {
-				if (isSticky) return;
-				
-				const defaultUIRect = defaultUI.getBoundingClientRect();
-				const toolbarRect = toolbar.getBoundingClientRect();
-				
-				if (defaultUIRect.top <= 0 && defaultUIRect.bottom > toolbarRect.height) {
-					// Make toolbar fixed
-					toolbar.style.position = 'fixed';
+		if (toolbar) {
+			// Verify and enforce sticky positioning
+			const ensureSticky = () => {
+				const computedStyle = window.getComputedStyle(toolbar);
+				if (computedStyle.position !== 'sticky') {
+					toolbar.style.position = 'sticky';
 					toolbar.style.top = '0';
 					toolbar.style.zIndex = '100';
-					toolbar.style.width = defaultUIRect.width + 'px';
-					toolbar.style.left = defaultUIRect.left + 'px';
-					toolbar.style.marginLeft = '0';
-					toolbar.style.marginRight = '0';
-					isSticky = true;
-				} else if (defaultUIRect.top > 0) {
-					// Reset to normal position
-					toolbar.style.position = '';
-					toolbar.style.top = '';
-					toolbar.style.zIndex = '';
-					toolbar.style.width = '';
-					toolbar.style.left = '';
-					toolbar.style.marginLeft = '';
-					toolbar.style.marginRight = '';
-					isSticky = false;
 				}
-			}
+			};
 			
-			// Listen to scroll events on window (for body scroll)
-			window.addEventListener('scroll', makeToolbarSticky, true);
+			// Check immediately and after a short delay to ensure DOM is ready
+			ensureSticky();
+			setTimeout(ensureSticky, 100);
 			
-			// Also listen to scroll on the content container
-			const contents = document.querySelector('.toastui-editor-contents');
-			if (contents) {
-				contents.addEventListener('scroll', makeToolbarSticky);
-			}
-			
-			// Initial check
-			makeToolbarSticky();
+			// Re-check on scroll to ensure it stays sticky
+			window.addEventListener('scroll', ensureSticky, { passive: true });
 		}
-	}, 200);
+	}, 300);
 }
 
 // Handle messages sent from the extension to the webview

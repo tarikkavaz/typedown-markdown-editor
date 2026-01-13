@@ -280,9 +280,17 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							--typedown-theme-dropdown-bg: var(--vscode-dropdown-background);
 							--typedown-theme-dropdown-fg: var(--vscode-dropdown-foreground);
 							--typedown-theme-dropdown-border: var(--vscode-dropdown-border);
+							--typedown-theme-input-bg: var(--vscode-input-background);
+							--typedown-theme-input-fg: var(--vscode-input-foreground);
+							--typedown-theme-input-border: var(--vscode-input-border);
 						}
 						
 						/* Center and constrain editor width */
+						html, body {
+							height: 100%;
+							overflow-x: hidden;
+						}
+						
 						body {
 							display: flex;
 							flex-direction: column;
@@ -308,6 +316,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							box-sizing: border-box;
 							border: none !important;
 							position: relative !important;
+							display: flex !important;
+							flex-direction: column !important;
 						}
 						
 						.toastui-editor-defaultUI-toolbar {
@@ -316,6 +326,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							box-sizing: border-box;
 							background-color: var(--vscode-editor-background) !important;
 							border-bottom: 1px solid var(--typedown-theme-separator) !important;
+							position: sticky !important;
+							top: 0 !important;
+							z-index: 100 !important;
+							flex-shrink: 0 !important;
 						}
 						
 						.toastui-editor-contents {
@@ -361,19 +375,21 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.toastui-editor-defaultUI-toolbar button {
 							background-color: transparent !important;
 							border: 1px solid transparent !important;
-							color: var(--vscode-foreground) !important;
+							color: var(--vscode-button-foreground, var(--vscode-foreground)) !important;
 							border-radius: 3px !important;
-							transition: background-color 0.2s, border-color 0.2s !important;
+							transition: background-color 0.2s, border-color 0.2s, color 0.2s !important;
 						}
 						
 						.toastui-editor-defaultUI-toolbar button:not(:disabled):hover {
 							background-color: var(--vscode-list-hoverBackground) !important;
 							border-color: var(--vscode-list-hoverBackground) !important;
+							color: var(--vscode-button-foreground, var(--vscode-foreground)) !important;
 						}
 						
 						.toastui-editor-defaultUI-toolbar button:not(:disabled):active {
 							background-color: var(--vscode-list-activeSelectionBackground) !important;
 							border-color: var(--vscode-list-activeSelectionBackground) !important;
+							color: var(--vscode-button-foreground, var(--vscode-foreground)) !important;
 						}
 						
 						.toastui-editor-defaultUI-toolbar button:not(:disabled).active {
@@ -384,11 +400,124 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						
 						.toastui-editor-toolbar-icons {
 							background-color: transparent !important;
+							color: inherit !important;
+							/* Make icons brighter and more visible on dark backgrounds */
+							filter: brightness(1.5) contrast(1.2) !important;
+							opacity: 0.9 !important;
+						}
+						
+						.toastui-editor-toolbar-icons:not(:disabled):hover {
+							filter: brightness(1.8) contrast(1.3) !important;
+							opacity: 1 !important;
+						}
+						
+						.toastui-editor-toolbar-icons:not(:disabled).active {
+							filter: brightness(2) contrast(1.4) !important;
+							opacity: 1 !important;
+						}
+						
+						.toastui-editor-toolbar-icons:disabled {
+							filter: brightness(0.5) contrast(0.8) !important;
+							opacity: 0.3 !important;
 						}
 						
 						.toastui-editor-toolbar-divider {
 							background-color: var(--typedown-theme-separator) !important;
 							opacity: 0.5 !important;
+						}
+						
+						/* Dropdown menu styles */
+						.toastui-editor-dropdown-toolbar {
+							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
+							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
+						}
+						
+						.toastui-editor-dropdown-toolbar button {
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-dropdown-toolbar .toastui-editor-toolbar-icons {
+							filter: brightness(1.5) contrast(1.2) !important;
+							opacity: 0.9 !important;
+						}
+						
+						.toastui-editor-dropdown-toolbar .toastui-editor-toolbar-icons:not(:disabled):hover {
+							filter: brightness(1.8) contrast(1.3) !important;
+							opacity: 1 !important;
+						}
+						
+						.toastui-editor-popup .toastui-editor-toolbar-icons {
+							filter: brightness(1.5) contrast(1.2) !important;
+							opacity: 0.9 !important;
+						}
+						
+						.toastui-editor-popup .toastui-editor-toolbar-icons:not(:disabled):hover {
+							filter: brightness(1.8) contrast(1.3) !important;
+							opacity: 1 !important;
+						}
+						
+						/* Popup/dropdown menu items */
+						.toastui-editor-popup {
+							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
+							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-body {
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-body label {
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-add-heading ul li {
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-add-heading ul li:hover {
+							background-color: var(--vscode-list-hoverBackground) !important;
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-add-heading h1,
+						.toastui-editor-popup-add-heading h2,
+						.toastui-editor-popup-add-heading h3,
+						.toastui-editor-popup-add-heading h4,
+						.toastui-editor-popup-add-heading h5,
+						.toastui-editor-popup-add-heading h6 {
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-add-image .toastui-editor-tabs .tab-item {
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-add-image .toastui-editor-tabs .tab-item.active {
+							color: var(--vscode-button-foreground, var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground))) !important;
+							border-bottom-color: var(--vscode-button-background, var(--vscode-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-add-image .toastui-editor-file-name {
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-add-image .toastui-editor-file-name.has-file {
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-add-table .toastui-editor-table-description {
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-body input[type='text'] {
+							background-color: var(--typedown-theme-input-bg, var(--vscode-input-background)) !important;
+							color: var(--typedown-theme-input-fg, var(--vscode-input-foreground)) !important;
+							border-color: var(--typedown-theme-input-border, var(--vscode-input-border)) !important;
+						}
+						
+						.toastui-editor-popup-body input[type='text']:focus {
+							outline-color: var(--vscode-button-background, var(--vscode-foreground)) !important;
 						}
 						
 						/* Hide mode switch footer (Markdown/WYSIWYG tabs) */
@@ -477,6 +606,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 								'--vscode-dropdown-background': computedStyle.getPropertyValue('--vscode-dropdown-background'),
 								'--vscode-dropdown-foreground': computedStyle.getPropertyValue('--vscode-dropdown-foreground'),
 								'--vscode-dropdown-border': computedStyle.getPropertyValue('--vscode-dropdown-border'),
+								'--vscode-input-background': computedStyle.getPropertyValue('--vscode-input-background'),
+								'--vscode-input-foreground': computedStyle.getPropertyValue('--vscode-input-foreground'),
+								'--vscode-input-border': computedStyle.getPropertyValue('--vscode-input-border'),
 								'--vscode-list-hoverBackground': computedStyle.getPropertyValue('--vscode-list-hoverBackground'),
 							};
 							
@@ -511,6 +643,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							}
 							if (vscodeVars['--vscode-dropdown-border']) {
 								root.style.setProperty('--typedown-theme-dropdown-border', vscodeVars['--vscode-dropdown-border']);
+							}
+							if (vscodeVars['--vscode-input-background']) {
+								root.style.setProperty('--typedown-theme-input-bg', vscodeVars['--vscode-input-background']);
+							}
+							if (vscodeVars['--vscode-input-foreground']) {
+								root.style.setProperty('--typedown-theme-input-fg', vscodeVars['--vscode-input-foreground']);
+							}
+							if (vscodeVars['--vscode-input-border']) {
+								root.style.setProperty('--typedown-theme-input-border', vscodeVars['--vscode-input-border']);
 							}
 						})();
 					</script>
