@@ -405,26 +405,61 @@ window.addEventListener('message', (event) => {
 		case 'fontSizeChanged':
 		case 'fontChanged': {
 			const fontSize = message.fontSize;
-			const fontFamily = message.fontFamily || '';
-			console.log('Updating font to:', { fontSize, fontFamily });
+			// Ensure fontFamily is always valid, default to monospace if empty
+			let fontFamily = message.fontFamily;
+			if (!fontFamily || fontFamily.trim() === '') {
+				fontFamily = 'monospace';
+			}
+			// Code blocks ALWAYS use editor.fontFamily, not typedown.editor.fontFamily
+			let codeBlockFontFamily = message.codeBlockFontFamily || message.fontFamily;
+			if (!codeBlockFontFamily || codeBlockFontFamily.trim() === '') {
+				codeBlockFontFamily = 'monospace';
+			}
+			console.log('Updating font to:', { fontSize, fontFamily, codeBlockFontFamily });
 			// Update the font-size-style element with new CSS
 			const styleElement = document.getElementById('font-size-style');
 			if (styleElement) {
-				const fontFamilyCss = fontFamily ? `"${fontFamily}", ` : '';
+				// Use fontFamily as-is since VS Code settings already format it correctly (e.g., "'Fira Code', monospace")
 				styleElement.textContent = `
 					.toastui-editor-contents {
-						font-family: ${fontFamilyCss}monospace !important;
+						/* Use typedown.editor.fontFamily or editor.fontFamily for regular text */
+						font-family: ${fontFamily} !important;
 						font-size: ${fontSize}px !important;
 						-webkit-font-smoothing: subpixel-antialiased;
 						-moz-osx-font-smoothing: auto;
 						text-rendering: geometricPrecision;
 					}
 					.toastui-editor-defaultUI .toastui-editor-ww-container {
-						font-family: ${fontFamilyCss}monospace !important;
 						font-size: ${fontSize}px !important;
 						-webkit-font-smoothing: subpixel-antialiased;
 						-moz-osx-font-smoothing: auto;
 						text-rendering: geometricPrecision;
+					}
+					/* Code blocks MUST use editor.fontFamily (not typedown.editor.fontFamily) - override any inherited fonts */
+					.toastui-editor-contents .toastui-editor-ww-code-block,
+					.toastui-editor-contents .toastui-editor-ww-code-block-highlighting,
+					.toastui-editor-contents .toastui-editor-ww-code-block *,
+					.toastui-editor-contents .toastui-editor-ww-code-block-highlighting *,
+					.toastui-editor-contents .toastui-editor-ww-code-block pre,
+					.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre,
+					.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
+					.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre[class*="language-"],
+					.toastui-editor-contents .toastui-editor-ww-code-block code,
+					.toastui-editor-contents .toastui-editor-ww-code-block-highlighting code,
+					.toastui-editor-contents .toastui-editor-ww-code-block pre code:not([class*="language-"]),
+					.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) code,
+					.toastui-editor-contents .toastui-editor-ww-code-block code:not([class*="language-"]),
+					.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) {
+						font-family: ${codeBlockFontFamily} !important;
+						font-size: ${fontSize}px !important;
+					}
+					/* Inline code elements should also use editor.fontFamily (not typedown.editor.fontFamily) */
+					.toastui-editor-contents :not(pre) > code,
+					.toastui-editor-contents p code,
+					.toastui-editor-contents li code,
+					.toastui-editor-contents td code,
+					.toastui-editor-contents th code {
+						font-family: ${codeBlockFontFamily} !important;
 					}
 				`;
 			}

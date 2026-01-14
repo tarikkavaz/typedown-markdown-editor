@@ -164,13 +164,23 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				const editorConfig = vscode.workspace.getConfiguration('editor');
 				
 				const fontSize = typedownConfig.get<number>('fontSize') ?? editorConfig.get<number>('fontSize', 14);
-				const fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+				// Get fontFamily for regular text - typedown config takes precedence, otherwise use editor config
+				let fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+				if (!fontFamily || fontFamily.trim() === '') {
+					fontFamily = 'monospace';
+				}
+				// Code blocks ALWAYS use editor.fontFamily, not typedown.editor.fontFamily
+				let codeBlockFontFamily = editorConfig.get<string>('fontFamily', '');
+				if (!codeBlockFontFamily || codeBlockFontFamily.trim() === '') {
+					codeBlockFontFamily = 'monospace';
+				}
 				
-				console.log('Font configuration changed:', { fontSize, fontFamily });
+				console.log('Font configuration changed:', { fontSize, fontFamily, codeBlockFontFamily });
 				webviewPanel.webview.postMessage({
 					type: 'fontChanged',
 					fontSize: fontSize,
 					fontFamily: fontFamily,
+					codeBlockFontFamily: codeBlockFontFamily,
 				});
 			}
 			
@@ -257,7 +267,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const editorConfig = vscode.workspace.getConfiguration('editor');
 		
 		const fontSize = typedownConfig.get<number>('fontSize') ?? editorConfig.get<number>('fontSize', 14);
-		const fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+		// Get fontFamily for regular text - typedown config takes precedence, otherwise use editor config
+		let fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+		if (!fontFamily || fontFamily.trim() === '') {
+			fontFamily = 'monospace';
+		}
+		// Code blocks ALWAYS use editor.fontFamily, not typedown.editor.fontFamily
+		let codeBlockFontFamily = editorConfig.get<string>('fontFamily', '');
+		if (!codeBlockFontFamily || codeBlockFontFamily.trim() === '') {
+			codeBlockFontFamily = 'monospace';
+		}
 		const editorWidth = typedownConfig.get<string>('width', '91ch');
 
 		// Use a nonce to only allow a specific script to be run.
@@ -404,15 +423,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						/* Ensure dropdowns and popups have high z-index - only when they're actually shown */
 						/* Don't force visibility - let TUI Editor control show/hide */
 						
-						.toastui-editor-contents {
-							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
-							font-size: ${fontSize}px !important;
-							-webkit-font-smoothing: subpixel-antialiased;
-							-moz-osx-font-smoothing: auto;
-							text-rendering: geometricPrecision;
-							max-width: ${editorWidth} !important;
-							box-sizing: border-box;
-						}
+					.toastui-editor-contents {
+						/* Use editor.fontFamily for regular text, but code blocks will override with higher specificity */
+						font-family: ${fontFamily} !important;
+						font-size: ${fontSize}px !important;
+						-webkit-font-smoothing: subpixel-antialiased;
+						-moz-osx-font-smoothing: auto;
+						text-rendering: geometricPrecision;
+						max-width: ${editorWidth} !important;
+						box-sizing: border-box;
+					}
 						
 						.toastui-editor {
 							max-width: ${editorWidth} !important;
@@ -441,6 +461,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.toastui-editor-contents blockquote,
 						.toastui-editor-contents a {
 							color: var(--vscode-editor-foreground) !important;
+						}
+						
+						/* Inline code elements should also use editor.fontFamily (not typedown.editor.fontFamily) */
+						.toastui-editor-contents :not(pre) > code,
+						.toastui-editor-contents p code,
+						.toastui-editor-contents li code,
+						.toastui-editor-contents td code,
+						.toastui-editor-contents th code {
+							font-family: ${codeBlockFontFamily} !important;
 						}
 						
 						/* Toolbar button styling */
@@ -639,6 +668,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
 						}
 						
+						/* Code blocks MUST use editor.fontFamily (not typedown.editor.fontFamily) - override any inherited fonts with maximum specificity */
+						.toastui-editor-contents .toastui-editor-ww-code-block,
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting,
+						.toastui-editor-contents .toastui-editor-ww-code-block *,
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting *,
+						.toastui-editor-contents .toastui-editor-ww-code-block pre,
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre,
+						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block code,
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting code,
+						.toastui-editor-contents .toastui-editor-ww-code-block pre code:not([class*="language-"]),
+						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) code,
+						.toastui-editor-contents .toastui-editor-ww-code-block code:not([class*="language-"]),
+						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) {
+							font-family: ${codeBlockFontFamily} !important;
+						}
+						
 						/* Remove inner border/padding from PrismJS pre elements */
 						.toastui-editor-contents .toastui-editor-ww-code-block pre,
 						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre,
@@ -649,7 +696,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							margin: 0 !important;
 							padding: 0 !important;
 							border: none !important;
-							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
 						}
 						
 						.toastui-editor-contents .toastui-editor-ww-code-block code,
@@ -657,7 +703,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							background-color: transparent !important;
 							color: var(--vscode-editor-foreground) !important;
 							border: none !important;
-							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
 						}
 						
 						/* CRITICAL: Override PrismJS default light background - must be very specific */
