@@ -757,7 +757,51 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				<body>
 					<div id="editor"></div>
 
+					<script nonce="${nonce}">
+						// Track bundle loading state
+						window.__bundleLoaded = false;
+						window.__bundleLoadError = false;
+						window.__bundleError = null;
+						
+						// Add error handler for uncaught errors in the bundle
+						window.addEventListener('error', function(event) {
+							if (event.filename && event.filename.includes('tui-editor-bundle')) {
+								console.error('Error in tui-editor-bundle.js:', event.message, event.filename, event.lineno, event.colno);
+								window.__bundleError = {
+									message: event.message,
+									filename: event.filename,
+									lineno: event.lineno,
+									colno: event.colno
+								};
+								window.__bundleLoadError = true;
+							}
+						}, true);
+						
+						// Also catch unhandled promise rejections
+						window.addEventListener('unhandledrejection', function(event) {
+							console.error('Unhandled promise rejection (possibly from bundle):', event.reason);
+						});
+						
+						// Set up bundle load tracking (CSP-compliant way)
+						function setupBundleTracking() {
+							const bundleScript = document.querySelector('script[src*="tui-editor-bundle"]');
+							if (bundleScript) {
+								bundleScript.addEventListener('load', function() {
+									console.log('tui-editor-bundle.js loaded successfully');
+									window.__bundleLoaded = true;
+								});
+								bundleScript.addEventListener('error', function() {
+									console.error('Failed to load tui-editor-bundle.js:', bundleScript.src);
+									window.__bundleLoadError = true;
+								});
+							}
+						}
+					</script>
 					<script nonce="${nonce}" src="${tuiEditorJsUri}"></script>
+					<script nonce="${nonce}">
+						// Setup bundle tracking after script tag is added
+						setupBundleTracking();
+					</script>
 					<script nonce="${nonce}">
 						// Try to read VS Code theme CSS variables if available
 						// VS Code webviews may have access to some CSS variables

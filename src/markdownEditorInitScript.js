@@ -13,15 +13,39 @@ var editor = null;
 
 // Wait for TUI Editor bundle to load and initialize the editor
 function initEditor() {
+	// Check if bundle has loaded
+	if (typeof window !== 'undefined' && window.__bundleLoaded === false && window.__bundleLoadError === false) {
+		// Bundle script tag exists but hasn't fired onload yet - wait a bit more
+		if (!window.__typedownInitRetries) {
+			window.__typedownInitRetries = 0;
+		}
+		window.__typedownInitRetries++;
+		if (window.__typedownInitRetries < 100) {
+			setTimeout(initEditor, 50);
+			return;
+		}
+	}
+	
+	// Check for toastui in multiple possible locations
+	const toastui = (typeof window !== 'undefined' && window.toastui) || 
+	                 (typeof self !== 'undefined' && self.toastui) ||
+	                 (typeof globalThis !== 'undefined' && globalThis.toastui) ||
+	                 undefined;
+	
 	console.log('initEditor called, checking toastui...', {
+		bundleLoaded: typeof window !== 'undefined' ? window.__bundleLoaded : 'N/A',
+		bundleLoadError: typeof window !== 'undefined' ? window.__bundleLoadError : 'N/A',
+		bundleError: typeof window !== 'undefined' ? window.__bundleError : 'N/A',
 		toastuiType: typeof toastui,
 		toastuiExists: typeof toastui !== 'undefined',
 		toastuiEditor: typeof toastui !== 'undefined' ? typeof toastui.Editor : 'N/A',
 		windowToastui: typeof window !== 'undefined' && typeof window.toastui !== 'undefined',
 		selfToastui: typeof self !== 'undefined' && typeof self.toastui !== 'undefined',
+		globalThisToastui: typeof globalThis !== 'undefined' && typeof globalThis.toastui !== 'undefined',
+		prismAvailable: typeof window !== 'undefined' && typeof window.Prism !== 'undefined',
 	});
 	
-	if (typeof toastui !== 'undefined' && toastui.Editor) {
+	if (toastui && toastui.Editor) {
 		console.log('Creating TUI Editor instance...');
 		console.log('hljs available:', typeof window.hljs !== 'undefined', typeof window.hljs);
 		console.log('codeSyntaxHighlight available:', typeof toastui.codeSyntaxHighlight !== 'undefined');
@@ -88,8 +112,34 @@ function initEditor() {
 			setEditorContent(state.text);
 		}
 	} else {
-		// Retry if toastui is not loaded yet
-		setTimeout(initEditor, 50);
+		// Retry if toastui is not loaded yet, but limit retries to prevent infinite loop
+		if (!window.__typedownInitRetries) {
+			window.__typedownInitRetries = 0;
+		}
+		window.__typedownInitRetries++;
+		
+		// Stop retrying after 200 attempts (10 seconds)
+		if (window.__typedownInitRetries < 200) {
+			setTimeout(initEditor, 50);
+		} else {
+			console.error('Failed to initialize TUI Editor: toastui not found after 200 retries. Bundle may have failed to load.');
+			// Try to check if bundle script loaded
+			const scripts = document.querySelectorAll('script[src*="tui-editor-bundle"]');
+			console.error('Bundle scripts found:', scripts.length);
+			if (scripts.length === 0) {
+				console.error('ERROR: tui-editor-bundle.js script tag not found in DOM!');
+			} else {
+				console.error('Bundle script tag found, but toastui is not available.');
+				if (window.__bundleLoadError) {
+					console.error('Bundle failed to load (onerror event fired)');
+				}
+				if (window.__bundleError) {
+					console.error('Bundle runtime error:', window.__bundleError);
+				}
+				// Check if Prism is available (it should be set before toastui)
+				console.error('Prism available:', typeof window.Prism !== 'undefined', typeof window.Prism);
+			}
+		}
 	}
 }
 
