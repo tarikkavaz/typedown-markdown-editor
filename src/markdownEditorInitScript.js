@@ -10,45 +10,18 @@ window.vscode = vscode;
 // We use this to track whether the document's initial content has been set yet
 var initializedFlag = false;
 var editor = null;
+var pendingContent = null; // Store content that arrives before editor is ready
 
 // Wait for TUI Editor bundle to load and initialize the editor
 function initEditor() {
-	// Check if bundle has loaded
-	if (typeof window !== 'undefined' && window.__bundleLoaded === false && window.__bundleLoadError === false) {
-		// Bundle script tag exists but hasn't fired onload yet - wait a bit more
-		if (!window.__typedownInitRetries) {
-			window.__typedownInitRetries = 0;
-		}
-		window.__typedownInitRetries++;
-		if (window.__typedownInitRetries < 100) {
-			setTimeout(initEditor, 50);
-			return;
-		}
-	}
-	
 	// Check for toastui in multiple possible locations
 	const toastui = (typeof window !== 'undefined' && window.toastui) || 
 	                 (typeof self !== 'undefined' && self.toastui) ||
 	                 (typeof globalThis !== 'undefined' && globalThis.toastui) ||
 	                 undefined;
 	
-	console.log('initEditor called, checking toastui...', {
-		bundleLoaded: typeof window !== 'undefined' ? window.__bundleLoaded : 'N/A',
-		bundleLoadError: typeof window !== 'undefined' ? window.__bundleLoadError : 'N/A',
-		bundleError: typeof window !== 'undefined' ? window.__bundleError : 'N/A',
-		toastuiType: typeof toastui,
-		toastuiExists: typeof toastui !== 'undefined',
-		toastuiEditor: typeof toastui !== 'undefined' ? typeof toastui.Editor : 'N/A',
-		windowToastui: typeof window !== 'undefined' && typeof window.toastui !== 'undefined',
-		selfToastui: typeof self !== 'undefined' && typeof self.toastui !== 'undefined',
-		globalThisToastui: typeof globalThis !== 'undefined' && typeof globalThis.toastui !== 'undefined',
-		prismAvailable: typeof window !== 'undefined' && typeof window.Prism !== 'undefined',
-	});
-	
+	// If toastui is available, proceed immediately
 	if (toastui && toastui.Editor) {
-		console.log('Creating TUI Editor instance...');
-		console.log('hljs available:', typeof window.hljs !== 'undefined', typeof window.hljs);
-		console.log('codeSyntaxHighlight available:', typeof toastui.codeSyntaxHighlight !== 'undefined');
 		
 		try {
 		// Configure plugins
@@ -61,13 +34,7 @@ function initEditor() {
 		const prismInstance = window.Prism || self.Prism || (typeof globalThis !== 'undefined' ? globalThis.Prism : undefined);
 		
 		if (toastui.codeSyntaxHighlight && prismInstance) {
-			console.log('Adding code syntax highlight plugin with PrismJS');
 			plugins.push([toastui.codeSyntaxHighlight, { highlighter: prismInstance }]);
-		} else {
-			console.warn('Skipping code syntax highlight plugin:', {
-				hasPlugin: !!toastui.codeSyntaxHighlight,
-				hasPrism: !!prismInstance
-			});
 		}
 		
 		editor = new toastui.Editor({
@@ -91,8 +58,6 @@ function initEditor() {
 		window.editor = editor;
 		editor.savedData = null;
 		editor.suppressNextChangeEvent = false;
-		
-		console.log('TUI Editor instance created successfully:', editor);
 		} catch (error) {
 			console.error('Error creating TUI Editor instance:', error);
 			throw error;
@@ -101,16 +66,22 @@ function initEditor() {
 		// Set up event handlers now that editor is ready
 		setupEditorHandlers();
 		
-		// Notify that editor is initialized
+		// Load pending content immediately if available (sent before editor was ready)
+		if (pendingContent !== null) {
+			setEditorContent(pendingContent);
+			pendingContent = null;
+		} else {
+			// Load initial content if state exists (for webview reloads)
+			const state = vscode.getState();
+			if (state && state.text) {
+				setEditorContent(state.text);
+			}
+		}
+		
+		// Request initial content (but it may have already been sent)
 		vscode.postMessage({
 			type: 'initialized',
 		});
-		
-		// Load initial content if state exists
-		const state = vscode.getState();
-		if (state && state.text) {
-			setEditorContent(state.text);
-		}
 	} else {
 		// Retry if toastui is not loaded yet, but limit retries to prevent infinite loop
 		if (!window.__typedownInitRetries) {
@@ -118,11 +89,11 @@ function initEditor() {
 		}
 		window.__typedownInitRetries++;
 		
-		// Stop retrying after 200 attempts (10 seconds)
-		if (window.__typedownInitRetries < 200) {
+		// Stop retrying after 40 attempts (2 seconds max wait)
+		if (window.__typedownInitRetries < 40) {
 			setTimeout(initEditor, 50);
 		} else {
-			console.error('Failed to initialize TUI Editor: toastui not found after 200 retries. Bundle may have failed to load.');
+			console.error('Failed to initialize TUI Editor: toastui not found after 40 retries. Bundle may have failed to load.');
 			// Try to check if bundle script loaded
 			const scripts = document.querySelectorAll('script[src*="tui-editor-bundle"]');
 			console.error('Bundle scripts found:', scripts.length);
@@ -143,16 +114,17 @@ function initEditor() {
 	}
 }
 
+// Make initEditor available globally so it can be called from inline script
+window.initEditor = initEditor;
+
 /**
  * Render the document in the webview.
  */
 function setEditorContent(/** @type {string} */ text) {
 	if (!editor) {
-		console.warn('Editor not initialized yet, cannot set content');
 		return;
 	}
 	
-	console.log('setEditorContent', { initializedFlag, text: JSON.stringify(text) });
 
 	// TUI Editor uses setMarkdown to set content
 	if (!initializedFlag) {
@@ -191,8 +163,10 @@ function setupEditorHandlers() {
 		editor.dirty = true;
 	});
 	
-	// Move toolbar outside editor container and make it fixed at top
-	setTimeout(() => {
+		// Move toolbar outside editor container and make it fixed at top
+		// Defer this to not block initial content rendering - use double RAF for lower priority
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => {
 		const toolbar = document.querySelector('.toastui-editor-defaultUI-toolbar');
 		const editor = document.querySelector('#editor');
 		
@@ -210,7 +184,7 @@ function setupEditorHandlers() {
 			// Add padding class to body
 			document.body.classList.add('has-fixed-toolbar');
 			
-			// Update width and max-width to match editor (centering is handled by CSS)
+			// Update width, max-width, and left position to match editor
 			const updateToolbarPosition = () => {
 				const editorRect = editor.getBoundingClientRect();
 				const editorWidth = editorRect.width;
@@ -222,111 +196,56 @@ function setupEditorHandlers() {
 				if (editorMaxWidth && editorMaxWidth !== 'none') {
 					toolbarWrapper.style.maxWidth = editorMaxWidth;
 				}
+				
+				// Align toolbar wrapper's left edge with editor's left edge
+				toolbarWrapper.style.left = editorRect.left + 'px';
 			};
 			
-			// Ensure dropdowns and popups are positioned correctly relative to fixed toolbar
+			// Track the last clicked button to help identify which button triggered a dropdown
+			let lastClickedButton = null;
+			
+			// Track button clicks for dropdown positioning
+			toolbar.addEventListener('click', (e) => {
+				const button = e.target.closest('button');
+				if (button) {
+					lastClickedButton = button;
+				}
+			}, true);
+			
+			// Ensure dropdowns and popups are visible and have proper z-index
 			const ensureDropdownsVisible = () => {
-				// Find all dropdowns and popups that are currently visible
-				const dropdowns = document.querySelectorAll('.toastui-editor-dropdown-toolbar, .toastui-editor-popup');
+				// Find all dropdowns, popups, and context menus
+				const dropdowns = document.querySelectorAll('.toastui-editor-dropdown-toolbar, .toastui-editor-popup, .toastui-editor-context-menu');
+				
 				dropdowns.forEach(dropdown => {
-					// Check if dropdown is actually visible (not hidden)
+					// Check if dropdown is actually visible
 					const computedStyle = window.getComputedStyle(dropdown);
 					const isVisible = computedStyle.display !== 'none' && 
 									  computedStyle.visibility !== 'hidden' && 
 									  computedStyle.opacity !== '0';
 					
-					if (!isVisible) {
-						return; // Skip hidden dropdowns
-					}
-					
-					// Only set z-index for visible dropdowns
-					dropdown.style.zIndex = '1001';
-					
-					// If dropdown is not inside toolbar wrapper, try to position it correctly
-					if (!toolbarWrapper.contains(dropdown)) {
-						// Try to find the active/clicked button that triggered this dropdown
-						// Check for buttons with active class or recent click
-						const toolbarButtons = toolbar.querySelectorAll('button');
-						let targetButton = null;
+					// Only adjust visible dropdowns
+					if (isVisible) {
+						// Set high z-index to ensure dropdowns appear above toolbar
+						dropdown.style.zIndex = '1001';
 						
-						// First, try to find an active button
-						const activeButton = toolbar.querySelector('button.active, button:focus');
-						if (activeButton) {
-							targetButton = activeButton;
-						} else {
-							// Find the closest toolbar button based on position
-							let closestButton = null;
-							let minDistance = Infinity;
-							
-							toolbarButtons.forEach(button => {
-								const buttonRect = button.getBoundingClientRect();
-								const dropdownRect = dropdown.getBoundingClientRect();
-								
-								// Calculate distance (both horizontal and vertical)
-								const horizontalDist = Math.abs(buttonRect.left - dropdownRect.left);
-								const verticalDist = dropdownRect.top - buttonRect.bottom;
-								
-								// If dropdown is near this button horizontally and below it
-								if (horizontalDist < 150 && verticalDist > -50 && verticalDist < 200) {
-									const totalDist = Math.sqrt(horizontalDist * horizontalDist + verticalDist * verticalDist);
-									if (totalDist < minDistance) {
-										minDistance = totalDist;
-										closestButton = button;
-									}
-								}
-							});
-							
-							if (closestButton) {
-								targetButton = closestButton;
-							}
-						}
+						// Ensure overflow is visible
+						dropdown.style.overflow = 'visible';
 						
-						// Position dropdown relative to the target button
-						if (targetButton) {
-							const buttonRect = targetButton.getBoundingClientRect();
+						// Ensure position is fixed (TUI Editor should handle positioning)
+						if (computedStyle.position !== 'fixed') {
 							dropdown.style.position = 'fixed';
-							dropdown.style.top = (buttonRect.bottom + window.scrollY) + 'px';
-							dropdown.style.left = (buttonRect.left + window.scrollX) + 'px';
 						}
 					}
 				});
 			};
 			
 			// Watch for dropdown creation and attribute changes (for show/hide)
-			const dropdownObserver = new MutationObserver((mutations) => {
-				let shouldUpdate = false;
-				mutations.forEach((mutation) => {
-					// Check for new dropdowns
-					mutation.addedNodes.forEach((node) => {
-						if (node.nodeType === 1) { // Element node
-							if (node.classList && (
-								node.classList.contains('toastui-editor-dropdown-toolbar') ||
-								node.classList.contains('toastui-editor-popup')
-							)) {
-								shouldUpdate = true;
-							}
-							// Also check children
-							const dropdowns = node.querySelectorAll?.('.toastui-editor-dropdown-toolbar, .toastui-editor-popup');
-							if (dropdowns && dropdowns.length > 0) {
-								shouldUpdate = true;
-							}
-						}
-					});
-					// Check for style/display changes (show/hide)
-					if (mutation.type === 'attributes' && 
-						(mutation.attributeName === 'style' || mutation.attributeName === 'class')) {
-						const target = mutation.target;
-						if (target.classList && (
-							target.classList.contains('toastui-editor-dropdown-toolbar') ||
-							target.classList.contains('toastui-editor-popup')
-						)) {
-							shouldUpdate = true;
-						}
-					}
+			const dropdownObserver = new MutationObserver(() => {
+				// When dropdowns are added or changed, ensure they're visible with proper z-index
+				requestAnimationFrame(() => {
+					ensureDropdownsVisible();
 				});
-				if (shouldUpdate) {
-					setTimeout(ensureDropdownsVisible, 10);
-				}
 			});
 			
 			// Observe document body for new dropdowns and attribute changes
@@ -337,24 +256,98 @@ function setupEditorHandlers() {
 				attributeFilter: ['style', 'class']
 			});
 			
+			// Handle click outside to close dropdowns
+			const closeDropdownsOnClickOutside = (e) => {
+				// Close custom heading dropdown
+				if (customHeadingDropdown && !customHeadingDropdown.contains(e.target)) {
+					const isOnToolbarButton = toolbar.contains(e.target);
+					if (!isOnToolbarButton) {
+						customHeadingDropdown.remove();
+						customHeadingDropdown = null;
+					}
+				}
+				
+				const dropdowns = document.querySelectorAll('.toastui-editor-dropdown-toolbar, .toastui-editor-popup, .toastui-editor-context-menu');
+				dropdowns.forEach(dropdown => {
+					// Skip our custom dropdown
+					if (dropdown.classList.contains('typedown-custom-heading-dropdown')) {
+						return;
+					}
+					
+					const computedStyle = window.getComputedStyle(dropdown);
+					const isVisible = computedStyle.display !== 'none' && 
+									  computedStyle.visibility !== 'hidden' && 
+									  computedStyle.opacity !== '0';
+					
+					if (isVisible) {
+						// Check if click is outside the dropdown
+						const rect = dropdown.getBoundingClientRect();
+						const clickX = e.clientX;
+						const clickY = e.clientY;
+						
+						const isOutside = clickX < rect.left || 
+										 clickX > rect.right || 
+										 clickY < rect.top || 
+										 clickY > rect.bottom;
+						
+						// Also check if click is on the button that opened it (don't close in that case)
+						const isOnToolbarButton = toolbar.contains(e.target);
+						
+						if (isOutside && !isOnToolbarButton) {
+							dropdown.style.display = 'none';
+							dropdown.style.visibility = 'hidden';
+							dropdown.style.opacity = '0';
+						}
+					}
+				});
+			};
+			
+			// Add click listener to document to close dropdowns
+			document.addEventListener('click', closeDropdownsOnClickOutside, true);
+			
 			// Initial update
 			updateToolbarPosition();
-			setTimeout(ensureDropdownsVisible, 100);
+			requestAnimationFrame(ensureDropdownsVisible);
+			
+			// Also run on every animation frame for a short period after button clicks
+			let animationFrameId = null;
+			let frameCount = 0;
+			const runPositioningLoop = () => {
+				ensureDropdownsVisible();
+				frameCount++;
+				if (frameCount < 10) { // Run for ~10 frames (~160ms at 60fps)
+					animationFrameId = requestAnimationFrame(runPositioningLoop);
+				} else {
+					frameCount = 0;
+				}
+			};
+			
+			// Start positioning loop when button is clicked
+			toolbar.addEventListener('click', () => {
+				frameCount = 0;
+				if (animationFrameId) {
+					cancelAnimationFrame(animationFrameId);
+				}
+				runPositioningLoop();
+			}, true);
+			
+			// Also listen for click events on toolbar buttons to immediately position dropdowns
+			// This is handled above in the button click tracking
 			
 			// Update on resize and scroll (in case editor position changes)
 			window.addEventListener('resize', () => {
 				updateToolbarPosition();
-				setTimeout(ensureDropdownsVisible, 10);
+				requestAnimationFrame(ensureDropdownsVisible);
 			}, { passive: true });
 			window.addEventListener('scroll', () => {
 				updateToolbarPosition();
-				setTimeout(ensureDropdownsVisible, 10);
+				requestAnimationFrame(ensureDropdownsVisible);
 			}, { passive: true });
 			
 			// Use MutationObserver to watch for editor position changes
 			const observer = new MutationObserver(() => {
 				updateToolbarPosition();
-				setTimeout(ensureDropdownsVisible, 10);
+				requestAnimationFrame(ensureDropdownsVisible);
 			});
 			observer.observe(document.body, {
 				attributes: true,
@@ -366,7 +359,7 @@ function setupEditorHandlers() {
 			// Also observe the editor container for changes
 			const editorObserver = new MutationObserver(() => {
 				updateToolbarPosition();
-				setTimeout(ensureDropdownsVisible, 10);
+				requestAnimationFrame(ensureDropdownsVisible);
 			});
 			editorObserver.observe(editor, {
 				attributes: true,
@@ -375,26 +368,25 @@ function setupEditorHandlers() {
 				subtree: false
 			});
 			
-			console.log('Toolbar moved to fixed position at top');
 		}
-	}, 500);
+			});
+		});
 }
 
 // Handle messages sent from the extension to the webview
 window.addEventListener('message', (event) => {
-	console.log('Received Message', { 'event.data': JSON.stringify(event.data) });
 	const message = event.data; // The data that the extension sent
 	switch (message.type) {
 		case 'documentChanged': {
+			const text = message.text;
+			// Store content if editor isn't ready yet - it will be loaded when editor initializes
 			if (!editor) {
-				console.warn('Editor not initialized yet, cannot set content');
+				pendingContent = text;
+				vscode.setState({ text });
 				return;
 			}
-			const text = message.text;
 			editor.suppressNextChangeEvent = true;
 			setEditorContent(text);
-
-			// This state is returned in the call to `vscode.getState` below when a webview is reloaded.
 			vscode.setState({ text });
 			break;
 		}
@@ -415,7 +407,6 @@ window.addEventListener('message', (event) => {
 			if (!codeBlockFontFamily || codeBlockFontFamily.trim() === '') {
 				codeBlockFontFamily = 'monospace';
 			}
-			console.log('Updating font to:', { fontSize, fontFamily, codeBlockFontFamily });
 			// Update the font-size-style element with new CSS
 			const styleElement = document.getElementById('font-size-style');
 			if (styleElement) {
@@ -467,7 +458,6 @@ window.addEventListener('message', (event) => {
 		}
 		case 'themeChanged': {
 			const colors = message.colors;
-			console.log('Updating theme colors:', colors);
 			// Update CSS variables
 			if (colors) {
 				const root = document.documentElement;
@@ -483,7 +473,6 @@ window.addEventListener('message', (event) => {
 		}
 		case 'themeColorChanged': {
 			const sidebarForeground = message.sidebarForeground;
-			console.log('Updating sidebar foreground color:', sidebarForeground);
 			if (sidebarForeground) {
 				const root = document.documentElement;
 				// Use sideBar.foreground for separators, HR lines, and table borders
@@ -497,5 +486,12 @@ window.addEventListener('message', (event) => {
 	}
 });
 
-// Start initialization
-initEditor();
+// Start initialization - but only if bundle isn't already loaded
+// If bundle is already loaded, it will be called from the inline script
+if (window.toastui && window.toastui.Editor) {
+	// Bundle already loaded, initialize immediately
+	initEditor();
+} else {
+	// Wait for bundle to load
+	initEditor();
+}

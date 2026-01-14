@@ -87,6 +87,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			handleFocusChange(e.webviewPanel);
 		});
 
+		// Send initial content immediately - webview will store it and use when editor is ready
+		const initialText = document.getText();
+		const normalizedInitialText = initialText.replace(/(?:\r\n|\r|\n)/g, '\n');
+		webviewPanel.webview.postMessage({ 
+			type: 'documentChanged', 
+			text: normalizedInitialText 
+		});
+
 		// Initial scroll sync
 		webviewPanel.webview.postMessage({
 			type: 'scrollChanged',
@@ -233,7 +241,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					this.updateTextDocument(document, e.text, isUpdatingFromWebview);
 					return;
 				case 'initialized':
-					updateWebview();
+					// Content was already sent immediately when HTML loaded, so no need to send again
+					// updateWebview() would send duplicate content
 					return;
 				case 'plainPaste':
 					vscode.commands.executeCommand('editor.action.clipboardPasteAction');
@@ -344,7 +353,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						body {
 							display: flex;
 							flex-direction: column;
-							align-items: center;
+							align-items: flex-start;
 							margin: 0;
 							padding: 0;
 							background-color: var(--vscode-editor-background);
@@ -353,7 +362,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						#editor {
 							width: 100%;
 							max-width: ${editorWidth};
-							margin: 0 auto;
+							margin: 0;
 							padding: 0;
 							box-sizing: border-box;
 						}
@@ -362,22 +371,25 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.typedown-toolbar-wrapper {
 							position: fixed !important;
 							top: 0 !important;
-							left: 50% !important;
-							transform: translateX(-50%) !important;
+							left: 0 !important;
 							z-index: 1000 !important;
 							display: flex !important;
-							justify-content: center !important;
+							justify-content: flex-start !important;
 							background-color: transparent !important;
 							pointer-events: none !important;
 							max-width: ${editorWidth} !important;
 							box-sizing: border-box !important;
 							overflow: visible !important;
+							clip: none !important;
+							clip-path: none !important;
 						}
 						
 						.typedown-toolbar-wrapper .toastui-editor-defaultUI-toolbar {
 							pointer-events: all !important;
 							position: relative !important;
 							overflow: visible !important;
+							clip: none !important;
+							clip-path: none !important;
 						}
 						
 						/* Add padding to body to account for fixed toolbar */
@@ -389,7 +401,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.toastui-editor-defaultUI {
 							max-width: ${editorWidth} !important;
 							width: 100% !important;
-							margin: 0 auto !important;
+							margin: 0 !important;
 							box-sizing: border-box;
 							border: none !important;
 							position: relative !important;
@@ -419,7 +431,101 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.typedown-toolbar-wrapper .toastui-editor-popup {
 							position: absolute !important;
 							z-index: 1001 !important;
+							overflow: visible !important;
+							clip: none !important;
+							clip-path: none !important;
 						}
+						
+						/* Ensure all popups/dropdowns can escape their containers */
+						.toastui-editor-dropdown-toolbar,
+						.toastui-editor-popup,
+						.toastui-editor-context-menu {
+							position: fixed !important;
+							z-index: 1001 !important;
+							overflow: visible !important;
+							clip: none !important;
+							clip-path: none !important;
+						}
+						
+						/* Ensure all TUI Editor dropdowns are visible and properly styled */
+						.toastui-editor-popup-add-heading {
+							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
+							border: 1px solid var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
+							min-width: 150px !important;
+							width: auto !important;
+							min-height: 100px !important;
+							height: auto !important;
+							overflow: visible !important;
+							overflow-y: visible !important;
+							overflow-x: visible !important;
+							display: block !important;
+							visibility: visible !important;
+							opacity: 1 !important;
+							box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.08) !important;
+							z-index: 1002 !important;
+							position: fixed !important;
+							max-height: none !important;
+						}
+						
+						.toastui-editor-popup-add-heading .toastui-editor-popup-body {
+							display: block !important;
+							visibility: visible !important;
+							opacity: 1 !important;
+							padding: 0 !important;
+							overflow: visible !important;
+							overflow-y: visible !important;
+							overflow-x: visible !important;
+							height: auto !important;
+							min-height: auto !important;
+							max-height: none !important;
+						}
+						
+						.toastui-editor-popup-add-heading ul {
+							display: block !important;
+							visibility: visible !important;
+							opacity: 1 !important;
+							padding: 5px 0 !important;
+							margin: 0 !important;
+							list-style: none !important;
+							overflow: visible !important;
+							overflow-y: visible !important;
+							overflow-x: visible !important;
+							height: auto !important;
+							min-height: auto !important;
+							max-height: none !important;
+						}
+						
+						.toastui-editor-popup-add-heading ul li {
+							display: block !important;
+							visibility: visible !important;
+							opacity: 1 !important;
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+							padding: 4px 12px !important;
+							cursor: pointer !important;
+							white-space: nowrap !important;
+						}
+						
+						.toastui-editor-popup-add-heading ul li:hover {
+							background-color: var(--vscode-list-hoverBackground) !important;
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						}
+						
+						.toastui-editor-popup-add-heading h1,
+						.toastui-editor-popup-add-heading h2,
+						.toastui-editor-popup-add-heading h3,
+						.toastui-editor-popup-add-heading h4,
+						.toastui-editor-popup-add-heading h5,
+						.toastui-editor-popup-add-heading h6 {
+							display: block !important;
+							visibility: visible !important;
+							opacity: 1 !important;
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+							margin: 0 !important;
+							padding: 0 !important;
+						}
+						
 						
 						/* Ensure dropdowns and popups have high z-index - only when they're actually shown */
 						/* Don't force visibility - let TUI Editor control show/hide */
@@ -533,7 +639,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
 							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
 							z-index: 1001 !important;
-							position: absolute !important;
+							position: fixed !important;
+							overflow: visible !important;
 						}
 						
 						.toastui-editor-dropdown-toolbar button {
@@ -566,7 +673,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
 							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
 							z-index: 1001 !important;
-							position: absolute !important;
+							position: fixed !important;
+							overflow: visible !important;
+						}
+						
+						/* Context menu styles */
+						.toastui-editor-context-menu {
+							z-index: 1001 !important;
+							position: fixed !important;
+							overflow: visible !important;
 						}
 						
 						.toastui-editor-popup-body {
@@ -828,25 +943,49 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							console.error('Unhandled promise rejection (possibly from bundle):', event.reason);
 						});
 						
-						// Set up bundle load tracking (CSP-compliant way)
+						// Set up bundle load tracking BEFORE script is added
 						function setupBundleTracking() {
 							const bundleScript = document.querySelector('script[src*="tui-editor-bundle"]');
 							if (bundleScript) {
-								bundleScript.addEventListener('load', function() {
-									console.log('tui-editor-bundle.js loaded successfully');
+								// Check if script is already loaded (complete property)
+								if (bundleScript.complete || bundleScript.readyState === 'complete' || bundleScript.readyState === 'loaded') {
+									console.log('tui-editor-bundle.js already loaded');
 									window.__bundleLoaded = true;
-								});
-								bundleScript.addEventListener('error', function() {
-									console.error('Failed to load tui-editor-bundle.js:', bundleScript.src);
-									window.__bundleLoadError = true;
-								});
+									// Trigger init immediately if bundle is ready
+									if (window.toastui && window.toastui.Editor) {
+										setTimeout(function() {
+											if (window.initEditor) window.initEditor();
+										}, 0);
+									}
+								} else {
+									bundleScript.addEventListener('load', function() {
+										console.log('tui-editor-bundle.js loaded successfully');
+										window.__bundleLoaded = true;
+										// Trigger init immediately when bundle loads
+										if (window.toastui && window.toastui.Editor) {
+											setTimeout(function() {
+												if (window.initEditor) window.initEditor();
+											}, 0);
+										}
+									});
+									bundleScript.addEventListener('error', function() {
+										console.error('Failed to load tui-editor-bundle.js:', bundleScript.src);
+										window.__bundleLoadError = true;
+									});
+								}
 							}
 						}
 					</script>
-					<script nonce="${nonce}" src="${tuiEditorJsUri}"></script>
+					<script nonce="${nonce}" src="${tuiEditorJsUri}" onload="window.__bundleLoaded = true; if (window.toastui && window.toastui.Editor && window.initEditor) { setTimeout(window.initEditor, 0); }" onerror="window.__bundleLoadError = true;"></script>
 					<script nonce="${nonce}">
 						// Setup bundle tracking after script tag is added
 						setupBundleTracking();
+						// Also check immediately if bundle is already available
+						if (window.toastui && window.toastui.Editor) {
+							setTimeout(function() {
+								if (window.initEditor) window.initEditor();
+							}, 0);
+						}
 					</script>
 					<script nonce="${nonce}">
 						// Try to read VS Code theme CSS variables if available
@@ -970,18 +1109,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							if (initialTheme) {
 								switchPrismTheme(initialTheme);
 							}
-							
-							// Also detect theme after editor loads (in case it's delayed)
-							setTimeout(() => {
-								detectAndSetTheme();
-								const theme = document.body.getAttribute('data-theme');
-								if (theme) switchPrismTheme(theme);
-							}, 100);
-							setTimeout(() => {
-								detectAndSetTheme();
-								const theme = document.body.getAttribute('data-theme');
-								if (theme) switchPrismTheme(theme);
-							}, 500);
 						})();
 					</script>
 					<script nonce="${nonce}" src="${initScriptUri}"></script>
