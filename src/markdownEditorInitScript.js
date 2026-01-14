@@ -23,7 +23,29 @@ function initEditor() {
 	
 	if (typeof toastui !== 'undefined' && toastui.Editor) {
 		console.log('Creating TUI Editor instance...');
+		console.log('hljs available:', typeof window.hljs !== 'undefined', typeof window.hljs);
+		console.log('codeSyntaxHighlight available:', typeof toastui.codeSyntaxHighlight !== 'undefined');
+		
 		try {
+		// Configure plugins
+		const plugins = [];
+		// Get hljs from window, self, or globalThis
+		const hljsInstance = window.hljs || self.hljs || (typeof globalThis !== 'undefined' ? globalThis.hljs : undefined);
+		
+		// Try to add syntax highlighting plugin with PrismJS
+		// The plugin was designed for PrismJS, not highlight.js
+		const prismInstance = window.Prism || self.Prism || (typeof globalThis !== 'undefined' ? globalThis.Prism : undefined);
+		
+		if (toastui.codeSyntaxHighlight && prismInstance) {
+			console.log('Adding code syntax highlight plugin with PrismJS');
+			plugins.push([toastui.codeSyntaxHighlight, { highlighter: prismInstance }]);
+		} else {
+			console.warn('Skipping code syntax highlight plugin:', {
+				hasPlugin: !!toastui.codeSyntaxHighlight,
+				hasPrism: !!prismInstance
+			});
+		}
+		
 		editor = new toastui.Editor({
 			el: document.querySelector('#editor'),
 			initialEditType: 'wysiwyg',
@@ -31,6 +53,7 @@ function initEditor() {
 			height: 'auto',
 			minHeight: '400px',
 			usageStatistics: false,
+			plugins: plugins,
 			toolbarItems: [
 				['heading', 'bold', 'italic', 'strike'],
 				['hr', 'quote'],

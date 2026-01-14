@@ -239,6 +239,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const tuiEditorCssUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'tui-editor.css')
 		);
+		const prismCssUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'prism.css')
+		);
+		const prismDarkCssUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'prism-dark.css')
+		);
+		const pluginCssUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'toastui-editor-plugin-code-syntax-highlight.css')
+		);
 		const tuiEditorJsUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'tui-editor-bundle.js')
 		);
@@ -265,6 +274,27 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 					<title>Markdown WYSIWYG Editor</title>
 					<link rel="stylesheet" href="${tuiEditorCssUri}" />
+					<link rel="stylesheet" href="${prismCssUri}" id="prism-theme-light" />
+					<link rel="stylesheet" href="${prismDarkCssUri}" id="prism-theme-dark" media="none" />
+					<link rel="stylesheet" href="${pluginCssUri}" />
+					
+					<style>
+						/* CRITICAL: Override PrismJS light background immediately - must come before other styles */
+						:not(pre) > code[class*="language-"],
+						pre[class*="language-"],
+						.toastui-editor-contents pre[class*="language-"],
+						.toastui-editor-contents code[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block code[class*="language-"] {
+							background: transparent !important;
+							background-color: transparent !important;
+						}
+						
+						/* Ensure code blocks use theme background */
+						.toastui-editor-contents .toastui-editor-ww-code-block {
+							background-color: var(--vscode-textBlockQuote-background, var(--vscode-editor-background)) !important;
+						}
+					</style>
 					
 					<style>
 						:root {
@@ -599,35 +629,130 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						}
 						
 						/* Code block styles */
-						.toastui-editor-contents .toastui-editor-ww-code-block {
-							background-color: var(--vscode-textBlockQuote-background, var(--vscode-editor-background)) !important;
+						.toastui-editor-contents .toastui-editor-ww-code-block,
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting {
+							background-color: var(--vscode-editor-background) !important;
 							border: 1px solid var(--typedown-theme-table-border) !important;
 							border-radius: 4px !important;
 							padding: 1em !important;
 							margin: 0.5em 0 !important;
+							box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
 						}
 						
-						.toastui-editor-contents .toastui-editor-ww-code-block pre {
+						/* Remove inner border/padding from PrismJS pre elements */
+						.toastui-editor-contents .toastui-editor-ww-code-block pre,
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre,
+						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre[class*="language-"] {
 							background-color: transparent !important;
 							color: var(--vscode-editor-foreground) !important;
 							margin: 0 !important;
 							padding: 0 !important;
+							border: none !important;
 							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
 						}
 						
-						.toastui-editor-contents .toastui-editor-ww-code-block code {
+						.toastui-editor-contents .toastui-editor-ww-code-block code,
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting code {
 							background-color: transparent !important;
 							color: var(--vscode-editor-foreground) !important;
+							border: none !important;
 							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
 						}
 						
-						.toastui-editor-contents .toastui-editor-ww-code-block:after {
+						/* CRITICAL: Override PrismJS default light background - must be very specific */
+						:not(pre) > code[class*="language-"],
+						pre[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block code[class*="language-"],
+						.toastui-editor-contents pre[class*="language-"],
+						.toastui-editor-contents code[class*="language-"] {
+							background: transparent !important;
+							background-color: transparent !important;
+							text-shadow: none !important;
+						}
+						
+						/* Fix for code blocks without language - match styling to highlighted blocks */
+						.toastui-editor-contents .toastui-editor-ww-code-block pre code:not([class*="language-"]),
+						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) code,
+						.toastui-editor-contents .toastui-editor-ww-code-block code:not([class*="language-"]),
+						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) {
+							color: var(--vscode-editor-foreground) !important;
+							background-color: transparent !important;
+							border: none !important;
+						}
+						
+						/* Ensure ALL code blocks (with or without language) have the same background */
+						.toastui-editor-contents .toastui-editor-ww-code-block,
+						.toastui-editor-contents .toastui-editor-ww-code-block:not(.toastui-editor-ww-code-block-highlighting),
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting {
 							background-color: var(--vscode-editor-background) !important;
-							color: var(--vscode-foreground) !important;
+						}
+						
+						/* Remove any white backgrounds that might be applied */
+						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]),
+						.toastui-editor-contents .toastui-editor-ww-code-block pre code:not([class*="language-"]) {
+							background-color: transparent !important;
+							background: transparent !important;
+						}
+						
+						/* Theme-aware PrismJS - we switch between light and dark PrismJS themes via CSS media queries */
+						/* PrismJS default colors are preserved - light theme for light mode, dark theme for dark mode */
+						
+						
+						/* Language label styling */
+						.toastui-editor-contents .toastui-editor-ww-code-block:after,
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting:after {
+							background-color: var(--vscode-editor-background) !important;
+							color: var(--vscode-descriptionForeground, var(--vscode-foreground)) !important;
 							border: 1px solid var(--typedown-theme-table-border) !important;
+						}
+						
+						/* Code block language input styling */
+						.toastui-editor-code-block-language-input {
+							background-color: var(--typedown-theme-input-bg, var(--vscode-input-background)) !important;
+							border-color: var(--typedown-theme-input-border, var(--vscode-input-border)) !important;
+							color: var(--typedown-theme-input-fg, var(--vscode-input-foreground)) !important;
+						}
+						
+						.toastui-editor-code-block-language-input input {
+							background-color: transparent !important;
+							color: var(--typedown-theme-input-fg, var(--vscode-input-foreground)) !important;
 						}
 					</style>
 					<style id="font-size-style"></style>
+					<style id="prism-theme-override">
+						/* Final override for PrismJS - ensure transparent backgrounds and remove inner borders */
+						.toastui-editor-contents pre[class*="language-"],
+						.toastui-editor-contents code[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block code[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting code[class*="language-"] {
+							background: transparent !important;
+							background-color: transparent !important;
+							text-shadow: none !important;
+							border: none !important;
+							padding: 0 !important;
+							margin: 0 !important;
+						}
+						
+						/* Remove PrismJS default padding from pre elements inside code blocks */
+						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
+						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre[class*="language-"] {
+							padding: 0 !important;
+							margin: 0 !important;
+						}
+						
+						/* Ensure unhighlighted code is visible and matches highlighted blocks */
+						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) code,
+						.toastui-editor-contents .toastui-editor-ww-code-block pre code:not([class*="language-"]),
+						.toastui-editor-contents .toastui-editor-ww-code-block code:not([class*="language-"]) {
+							color: var(--vscode-editor-foreground) !important;
+							background: transparent !important;
+							border: none !important;
+						}
+					</style>
 				</head>
 				<body>
 					<div id="editor"></div>
@@ -699,6 +824,74 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							if (vscodeVars['--vscode-input-border']) {
 								root.style.setProperty('--typedown-theme-input-border', vscodeVars['--vscode-input-border']);
 							}
+							
+							// Detect theme (dark/light) by checking background color brightness
+							function detectAndSetTheme() {
+								const bgColor = vscodeVars['--vscode-editor-background'] || computedStyle.getPropertyValue('--vscode-editor-background');
+								if (bgColor) {
+									// Convert hex/rgb to brightness
+									let r, g, b;
+									const rgbMatch = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+									const hexMatch = bgColor.match(/#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
+									
+									if (rgbMatch) {
+										r = parseInt(rgbMatch[1], 10);
+										g = parseInt(rgbMatch[2], 10);
+										b = parseInt(rgbMatch[3], 10);
+									} else if (hexMatch) {
+										r = parseInt(hexMatch[1], 16);
+										g = parseInt(hexMatch[2], 16);
+										b = parseInt(hexMatch[3], 16);
+									}
+									
+									if (r !== undefined && g !== undefined && b !== undefined) {
+										const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+										const isDark = brightness < 128;
+										const theme = isDark ? 'dark' : 'light';
+										
+										// Set theme attribute on body and editor container
+										document.body.setAttribute('data-theme', theme);
+										const editorContainer = document.querySelector('.toastui-editor-contents');
+										if (editorContainer) {
+											editorContainer.setAttribute('data-theme', theme);
+										}
+									}
+								}
+							}
+							
+							// Function to switch PrismJS theme based on detected theme
+							function switchPrismTheme(theme) {
+								const lightTheme = document.getElementById('prism-theme-light');
+								const darkTheme = document.getElementById('prism-theme-dark');
+								if (lightTheme && darkTheme) {
+									if (theme === 'dark') {
+										lightTheme.setAttribute('media', 'none');
+										darkTheme.setAttribute('media', 'all');
+									} else {
+										lightTheme.setAttribute('media', 'all');
+										darkTheme.setAttribute('media', 'none');
+									}
+								}
+							}
+							
+							// Detect theme immediately
+							detectAndSetTheme();
+							const initialTheme = document.body.getAttribute('data-theme');
+							if (initialTheme) {
+								switchPrismTheme(initialTheme);
+							}
+							
+							// Also detect theme after editor loads (in case it's delayed)
+							setTimeout(() => {
+								detectAndSetTheme();
+								const theme = document.body.getAttribute('data-theme');
+								if (theme) switchPrismTheme(theme);
+							}, 100);
+							setTimeout(() => {
+								detectAndSetTheme();
+								const theme = document.body.getAttribute('data-theme');
+								if (theme) switchPrismTheme(theme);
+							}, 500);
 						})();
 					</script>
 					<script nonce="${nonce}" src="${initScriptUri}"></script>

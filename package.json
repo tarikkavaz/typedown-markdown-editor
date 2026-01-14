@@ -144,9 +144,9 @@
 		"webpack-cli": "^5.1.0"
 	},
 	"dependencies": {
-		"prettier": "^3.0.0",
 		"@toast-ui/editor": "^3.2.2",
 		"@toast-ui/editor-plugin-code-syntax-highlight": "^3.0.0-alpha.0",
-		"highlight.js": "^11.9.0"
+		"prettier": "^3.0.0",
+		"prismjs": "^1.30.0"
 	}
 }
