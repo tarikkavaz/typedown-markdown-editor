@@ -47,7 +47,7 @@ pre[class*="language-"] {
 	overflow: auto;
 	border: .3em solid hsl(30, 20%, 40%);
 	border-radius: .5em;
-	box-shadow: 1px 1px .5em black inset;
+	box-shadow: none !important;
 }
 
 /* Inline code */
@@ -55,7 +55,7 @@ pre[class*="language-"] {
 	padding: .15em .2em .05em;
 	border-radius: .3em;
 	border: .13em solid hsl(30, 20%, 40%);
-	box-shadow: 1px 1px .3em -.1em black inset;
+	box-shadow: none !important;
 	white-space: normal;
 }
 
@@ -63,15 +63,17 @@ pre[class*="language-"] {
 .token.prolog,
 .token.doctype,
 .token.cdata {
-	color: hsl(30, 20%, 50%);
+	color: hsl(220, 10%, 40%);
 }
 
 .token.punctuation {
-	opacity: .7;
+	color: hsl(220, 14%, 71%);
+	opacity: 1;
 }
 
 .token.namespace {
-	opacity: .7;
+	color: hsl(220, 14%, 71%);
+	opacity: 1;
 }
 
 .token.property,
@@ -80,7 +82,7 @@ pre[class*="language-"] {
 .token.number,
 .token.constant,
 .token.symbol {
-	color: hsl(350, 40%, 70%);
+	color: hsl(355, 65%, 65%);
 }
 
 .token.selector,
@@ -89,7 +91,7 @@ pre[class*="language-"] {
 .token.char,
 .token.builtin,
 .token.inserted {
-	color: hsl(75, 70%, 60%);
+	color: hsl(95, 38%, 62%);
 }
 
 .token.operator,
@@ -98,18 +100,18 @@ pre[class*="language-"] {
 .language-css .token.string,
 .style .token.string,
 .token.variable {
-	color: hsl(40, 90%, 60%);
+	color: hsl(207, 82%, 66%);
 }
 
 .token.atrule,
 .token.attr-value,
 .token.keyword {
-	color: hsl(350, 40%, 70%);
+	color: hsl(355, 65%, 65%);
 }
 
 .token.regex,
 .token.important {
-	color: #e90;
+	color: hsl(95, 38%, 62%);
 }
 
 .token.important,
@@ -125,5 +127,53 @@ pre[class*="language-"] {
 }
 
 .token.deleted {
-	color: red;
+	color: hsl(355, 65%, 65%);
+}
+
+
+/* Prism One Dark Theme Color Overrides */
+.token.comment,
+.token.prolog,
+.token.cdata {
+	color: hsl(220, 10%, 40%);
+}
+.token.doctype,
+.token.punctuation,
+.token.entity {
+	color: hsl(220, 14%, 71%);
+}
+.token.attr-name,
+.token.class-name,
+.token.boolean,
+.token.constant,
+.token.number,
+.token.atrule {
+	color: hsl(29, 54%, 61%);
+}
+.token.keyword {
+	color: hsl(286, 60%, 67%);
+}
+.token.property,
+.token.tag,
+.token.symbol,
+.token.deleted,
+.token.important {
+	color: hsl(355, 65%, 65%);
+}
+.token.selector,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted,
+.token.regex,
+.token.attr-value {
+	color: hsl(95, 38%, 62%);
+}
+.token.variable,
+.token.operator,
+.token.function {
+	color: hsl(207, 82%, 66%);
+}
+.token.url {
+	color: hsl(187, 47%, 55%);
 }

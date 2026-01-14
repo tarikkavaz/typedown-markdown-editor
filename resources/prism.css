@@ -70,11 +70,11 @@ pre[class*="language-"] {
 .token.prolog,
 .token.doctype,
 .token.cdata {
-	color: slategray;
+	color: hsl(230, 4%, 64%);
 }
 
 .token.punctuation {
-	color: #999;
+	color: hsl(230, 8%, 24%);
 }
 
 .token.namespace {
@@ -88,7 +88,7 @@ pre[class*="language-"] {
 .token.constant,
 .token.symbol,
 .token.deleted {
-	color: #905;
+	color: hsl(5, 74%, 59%);
 }
 
 .token.selector,
@@ -97,7 +97,7 @@ pre[class*="language-"] {
 .token.char,
 .token.builtin,
 .token.inserted {
-	color: #690;
+	color: hsl(119, 34%, 47%);
 }
 
 .token.operator,
@@ -105,7 +105,7 @@ pre[class*="language-"] {
 .token.url,
 .language-css .token.string,
 .style .token.string {
-	color: #9a6e3a;
+	color: hsl(221, 87%, 60%);
 	/* This background color was intended by the author of this theme. */
 	background: hsla(0, 0%, 100%, .5);
 }
@@ -113,18 +113,18 @@ pre[class*="language-"] {
 .token.atrule,
 .token.attr-value,
 .token.keyword {
-	color: #07a;
+	color: hsl(301, 63%, 40%);
 }
 
 .token.function,
 .token.class-name {
-	color: #DD4A68;
+	color: hsl(221, 87%, 60%);
 }
 
 .token.regex,
 .token.important,
 .token.variable {
-	color: #e90;
+	color: hsl(119, 34%, 47%);
 }
 
 .token.important,
@@ -137,4 +137,52 @@ pre[class*="language-"] {
 
 .token.entity {
 	cursor: help;
+}
+
+
+/* Prism One Light Theme Color Overrides */
+.token.comment,
+.token.prolog,
+.token.cdata {
+	color: hsl(230, 4%, 64%);
+}
+.token.doctype,
+.token.punctuation,
+.token.entity {
+	color: hsl(230, 8%, 24%);
+}
+.token.attr-name,
+.token.class-name,
+.token.boolean,
+.token.constant,
+.token.number,
+.token.atrule {
+	color: hsl(35, 99%, 36%);
+}
+.token.keyword {
+	color: hsl(301, 63%, 40%);
+}
+.token.property,
+.token.tag,
+.token.symbol,
+.token.deleted,
+.token.important {
+	color: hsl(5, 74%, 59%);
+}
+.token.selector,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted,
+.token.regex,
+.token.attr-value {
+	color: hsl(119, 34%, 47%);
+}
+.token.variable,
+.token.operator,
+.token.function {
+	color: hsl(221, 87%, 60%);
+}
+.token.url {
+	color: hsl(198, 99%, 37%);
 }
