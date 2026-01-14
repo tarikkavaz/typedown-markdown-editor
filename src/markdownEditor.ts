@@ -158,6 +158,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const onDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration('typedown.editor.fontFamily') || 
 				e.affectsConfiguration('typedown.editor.fontSize') ||
+				e.affectsConfiguration('typedown.editor.codeBlockfontFamily') ||
 				e.affectsConfiguration('editor.fontFamily') ||
 				e.affectsConfiguration('editor.fontSize')) {
 				const typedownConfig = vscode.workspace.getConfiguration('typedown.editor');
@@ -169,8 +170,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				if (!fontFamily || fontFamily.trim() === '') {
 					fontFamily = 'monospace';
 				}
-				// Code blocks ALWAYS use editor.fontFamily, not typedown.editor.fontFamily
-				let codeBlockFontFamily = editorConfig.get<string>('fontFamily', '');
+				// Code blocks use typedown.editor.codeBlockfontFamily if set, otherwise fall back to editor.fontFamily
+				let codeBlockFontFamily = typedownConfig.get<string>('codeBlockfontFamily') ?? editorConfig.get<string>('fontFamily', '');
 				if (!codeBlockFontFamily || codeBlockFontFamily.trim() === '') {
 					codeBlockFontFamily = 'monospace';
 				}
@@ -272,8 +273,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		if (!fontFamily || fontFamily.trim() === '') {
 			fontFamily = 'monospace';
 		}
-		// Code blocks ALWAYS use editor.fontFamily, not typedown.editor.fontFamily
-		let codeBlockFontFamily = editorConfig.get<string>('fontFamily', '');
+		// Code blocks use typedown.editor.codeBlockfontFamily if set, otherwise fall back to editor.fontFamily
+		let codeBlockFontFamily = typedownConfig.get<string>('codeBlockfontFamily') ?? editorConfig.get<string>('fontFamily', '');
 		if (!codeBlockFontFamily || codeBlockFontFamily.trim() === '') {
 			codeBlockFontFamily = 'monospace';
 		}
@@ -463,7 +464,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							color: var(--vscode-editor-foreground) !important;
 						}
 						
-						/* Inline code elements should also use editor.fontFamily (not typedown.editor.fontFamily) */
+						/* Inline code elements should also use typedown.editor.codeBlockfontFamily (or editor.fontFamily as fallback) */
 						.toastui-editor-contents :not(pre) > code,
 						.toastui-editor-contents p code,
 						.toastui-editor-contents li code,
@@ -668,7 +669,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
 						}
 						
-						/* Code blocks MUST use editor.fontFamily (not typedown.editor.fontFamily) - override any inherited fonts with maximum specificity */
+						/* Code blocks use typedown.editor.codeBlockfontFamily (or editor.fontFamily as fallback) - override any inherited fonts with maximum specificity */
 						.toastui-editor-contents .toastui-editor-ww-code-block,
 						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting,
 						.toastui-editor-contents .toastui-editor-ww-code-block *,

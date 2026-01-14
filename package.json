@@ -119,6 +119,12 @@
 					"default": "91ch",
 					"description": "Maximum width of the markdown editor content area.",
 					"markdownDescription": "Maximum width of the markdown editor content area (e.g., '91ch', '120ch', '800px')."
+				},
+				"typedown.editor.codeBlockfontFamily": {
+					"type": "string",
+					"default": null,
+					"description": "Font family for code blocks in the markdown editor. If not set, uses VS Code's editor.fontFamily setting.",
+					"markdownDescription": "Font family for code blocks in the markdown editor. If not set, uses VS Code's `editor.fontFamily` setting."
 				}
 			}
 		}

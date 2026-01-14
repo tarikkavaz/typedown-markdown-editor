@@ -435,7 +435,7 @@ window.addEventListener('message', (event) => {
 						-moz-osx-font-smoothing: auto;
 						text-rendering: geometricPrecision;
 					}
-					/* Code blocks MUST use editor.fontFamily (not typedown.editor.fontFamily) - override any inherited fonts */
+					/* Code blocks use typedown.editor.codeBlockfontFamily (or editor.fontFamily as fallback) - override any inherited fonts */
 					.toastui-editor-contents .toastui-editor-ww-code-block,
 					.toastui-editor-contents .toastui-editor-ww-code-block-highlighting,
 					.toastui-editor-contents .toastui-editor-ww-code-block *,
@@ -453,7 +453,7 @@ window.addEventListener('message', (event) => {
 						font-family: ${codeBlockFontFamily} !important;
 						font-size: ${fontSize}px !important;
 					}
-					/* Inline code elements should also use editor.fontFamily (not typedown.editor.fontFamily) */
+					/* Inline code elements should also use typedown.editor.codeBlockfontFamily (or editor.fontFamily as fallback) */
 					.toastui-editor-contents :not(pre) > code,
 					.toastui-editor-contents p code,
 					.toastui-editor-contents li code,
