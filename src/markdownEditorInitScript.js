@@ -623,32 +623,14 @@ function initEditor() {
 	const ImageWithBase = Image.extend({
 		addNodeView() {
 			return ({ node }) => {
-				console.log('[Typedown] ImageWithBase nodeView created, src:', node.attrs.src, 'baseUri:', imageBaseUri);
 				const img = document.createElement('img');
-				
-				// Add load/error handlers for debugging
-				img.onload = () => {
-					console.log('[Typedown] Image loaded successfully:', img.src);
-					console.log('[Typedown] Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
-					console.log('[Typedown] Image in DOM:', document.body.contains(img));
-					console.log('[Typedown] Image computed display:', getComputedStyle(img).display);
-					console.log('[Typedown] Image computed visibility:', getComputedStyle(img).visibility);
-					console.log('[Typedown] Image offsetParent:', img.offsetParent);
-					console.log('[Typedown] Image clientWidth/Height:', img.clientWidth, img.clientHeight);
-				};
-				img.onerror = (e) => {
-					console.error('[Typedown] Image failed to load:', img.src, e);
-				};
-				
 				const update = (nextNode) => {
 					if (nextNode.type.name !== 'image') {
 						return false;
 					}
 					const src = resolveImageSrc(nextNode.attrs.src);
-					console.log('[Typedown] ImageWithBase update, attrs.src:', nextNode.attrs.src, '-> resolved:', src);
 					if (src) {
 						img.src = src;
-						console.log('[Typedown] After setting, img.src is:', img.src);
 					}
 					if (nextNode.attrs.alt) {
 						img.alt = nextNode.attrs.alt;
@@ -821,8 +803,6 @@ window.addEventListener('message', (event) => {
 			if (typeof message.baseUri === 'string') {
 				imageBaseUri = message.baseUri;
 			}
-			console.log('[Typedown] Inserting image:', message.src, 'baseUri:', imageBaseUri);
-			
 			// Insert image and paragraph in a single transaction
 			editor.chain()
 				.focus()
@@ -832,7 +812,7 @@ window.addEventListener('message', (event) => {
 				])
 				.run();
 			
-			// Force update image sources after DOM is settled
+			// Update image sources after DOM is settled
 			setTimeout(() => {
 				updateImageSources();
 			}, 50);
