@@ -3,8 +3,6 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { extensionState } from './extension';
 
-const prettier = require('prettier');
-
 export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 	public static register(context: vscode.ExtensionContext): vscode.Disposable {
 		const provider = new MarkdownEditorProvider(context);
@@ -930,30 +928,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			console.error('Document is null or undefined');
 			return;
 		}
-
-		let rawText = text;
-		console.log('Before prettier, text length:', text?.length || 0);
-
-		// Temporarily disable prettier formatting as it's returning empty strings
-		// TODO: Fix prettier configuration or find alternative formatting
-		/*
-		try {
-			// Autoformat the markdown text using Prettier
-			const formatted = prettier.format(text, {
-				parser: 'markdown',
-				proseWrap: 'preserve',
-			});
-			console.log('Prettier formatted, length:', formatted?.length || 0);
-			if (formatted && formatted.trim().length > 0) {
-				text = formatted;
-			} else {
-				console.warn('Prettier returned empty string, using original text');
-			}
-		} catch (error) {
-			console.error('Prettier formatting error:', error);
-			// Continue with unformatted text if prettier fails
-		}
-		*/
 
 		if (!text) {
 			console.error('Text is empty or undefined after processing');

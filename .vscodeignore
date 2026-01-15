@@ -17,3 +17,9 @@ dist/node_modules-*.js.map
 **/*.worker.js.map
 src/tiptap-bundle.js
 src/build-editor-bundle.js
+pnpm-lock.yaml
+test.md
+.tool-versions
+resources/prism.css
+resources/prism-dark.css
+resources/highlight.css
