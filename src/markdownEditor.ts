@@ -512,6 +512,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							font-family: ${codeBlockFontFamily};
 						}
 						
+						/* Inline code styling (code not inside pre) */
+						.ProseMirror :not(pre) > code {
+							background-color: color-mix(in srgb, var(--vscode-editor-foreground) 12%, transparent) !important;
+							border: 1px solid color-mix(in srgb, var(--vscode-editor-foreground) 20%, transparent) !important;
+							padding: 0.1em 0.35em;
+							border-radius: 4px;
+							font-size: 0.9em;
+						}
+						
 						.ProseMirror pre {
 							background-color: var(--vscode-editor-background);
 							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 35%, transparent);
@@ -791,10 +800,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							margin: 0 !important;
 						}
 						
-						/* Ensure unhighlighted code is visible and matches highlighted blocks */
+						/* Ensure unhighlighted code blocks are visible and matches highlighted blocks */
 						.ProseMirror pre:not([class*="language-"]) code,
-						.ProseMirror pre code:not([class*="language-"]),
-						.ProseMirror code:not([class*="language-"]) {
+						.ProseMirror pre code:not([class*="language-"]) {
 							color: var(--vscode-editor-foreground) !important;
 							background: transparent !important;
 							border: none !important;

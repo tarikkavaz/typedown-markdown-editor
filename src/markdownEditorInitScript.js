@@ -759,6 +759,9 @@ window.addEventListener('message', (event) => {
 					.ProseMirror code {
 						font-family: ${codeBlockFontFamily} !important;
 					}
+					.ProseMirror :not(pre) > code {
+						font-size: 0.9em !important;
+					}
 					.ProseMirror pre,
 					.ProseMirror pre code {
 						font-family: ${codeBlockFontFamily} !important;
