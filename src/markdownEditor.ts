@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { extensionState } from './extension';
 
 const prettier = require('prettier');
@@ -33,6 +35,28 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		// The actual color will be read from the webview's computed styles if available
 		// For now, return a CSS variable reference that the webview can resolve
 		return 'var(--vscode-sideBar-foreground, var(--vscode-foreground))';
+	}
+
+	private getPrismCustomThemeCss(): string {
+		const config = vscode.workspace.getConfiguration('typedown.editor');
+		const configuredPath = (config.get<string>('prismThemePath') || '').trim();
+		if (!configuredPath) {
+			return '';
+		}
+
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+		const resolvedPath = path.isAbsolute(configuredPath)
+			? configuredPath
+			: workspaceRoot
+				? path.join(workspaceRoot, configuredPath)
+				: configuredPath;
+
+		try {
+			return fs.readFileSync(resolvedPath, 'utf8');
+		} catch (error) {
+			console.warn('[Typedown] Failed to read Prism theme CSS:', error);
+			return '';
+		}
 	}
 
 
@@ -192,6 +216,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					codeBlockFontFamily: codeBlockFontFamily,
 				});
 			}
+
+			if (e.affectsConfiguration('typedown.editor.prismThemePath')) {
+				const customPrismCss = this.getPrismCustomThemeCss();
+				webviewPanel.webview.postMessage({
+					type: 'prismThemeChanged',
+					css: customPrismCss,
+				});
+			}
 			
 			// Update theme colors when theme changes
 			if (e.affectsConfiguration('workbench.colorTheme') || 
@@ -256,20 +288,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const initScriptUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'src', 'markdownEditorInitScript.js')
 		);
-		const tuiEditorCssUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'tui-editor.css')
-		);
-		const prismCssUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'prism.css')
-		);
-		const prismDarkCssUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'prism-dark.css')
-		);
-		const pluginCssUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'toastui-editor-plugin-code-syntax-highlight.css')
-		);
-		const tuiEditorJsUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'tui-editor-bundle.js')
+		const tiptapEditorJsUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'tiptap-bundle.js')
 		);
 
 		// Read font configuration - extension config takes precedence over VS Code editor config
@@ -288,6 +308,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			codeBlockFontFamily = 'monospace';
 		}
 		const editorWidth = typedownConfig.get<string>('width', '91ch');
+		const customPrismCss = this.getPrismCustomThemeCss();
+		const sanitizedCustomPrismCss = customPrismCss.replace(/<\/style>/gi, '<\\/style>');
 
 		// Use a nonce to only allow a specific script to be run.
 		const nonce = getNonce();
@@ -302,26 +324,52 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					<meta charset="UTF-8" />
 					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 					<title>Markdown WYSIWYG Editor</title>
-					<link rel="stylesheet" href="${tuiEditorCssUri}" />
-					<link rel="stylesheet" href="${prismCssUri}" id="prism-theme-light" />
-					<link rel="stylesheet" href="${prismDarkCssUri}" id="prism-theme-dark" media="none" />
-					<link rel="stylesheet" href="${pluginCssUri}" />
-					
-					<style>
-						/* CRITICAL: Override PrismJS light background immediately - must come before other styles */
-						:not(pre) > code[class*="language-"],
-						pre[class*="language-"],
-						.toastui-editor-contents pre[class*="language-"],
-						.toastui-editor-contents code[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block code[class*="language-"] {
-							background: transparent !important;
-							background-color: transparent !important;
+					<style id="prism-user-theme">${sanitizedCustomPrismCss}</style>
+					<style id="prism-vscode-theme">
+						/* VS Code theme-driven Prism tokens */
+						.token.comment,
+						.token.prolog,
+						.token.doctype,
+						.token.cdata {
+							color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
 						}
-						
-						/* Ensure code blocks use theme background */
-						.toastui-editor-contents .toastui-editor-ww-code-block {
-							background-color: var(--vscode-textBlockQuote-background, var(--vscode-editor-background)) !important;
+						.token.punctuation {
+							color: var(--vscode-editor-foreground);
+						}
+						.token.property,
+						.token.tag,
+						.token.boolean,
+						.token.number,
+						.token.constant,
+						.token.symbol,
+						.token.deleted {
+							color: var(--vscode-symbolIcon-numberForeground, var(--vscode-editor-foreground));
+						}
+						.token.selector,
+						.token.attr-name,
+						.token.string,
+						.token.char,
+						.token.builtin,
+						.token.inserted {
+							color: var(--vscode-symbolIcon-stringForeground, var(--vscode-editor-foreground));
+						}
+						.token.operator,
+						.token.entity,
+						.token.url,
+						.token.variable {
+							color: var(--vscode-symbolIcon-variableForeground, var(--vscode-editor-foreground));
+						}
+						.token.atrule,
+						.token.function,
+						.token.class-name {
+							color: var(--vscode-symbolIcon-functionForeground, var(--vscode-editor-foreground));
+						}
+						.token.keyword {
+							color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-editor-foreground));
+						}
+						.token.regex,
+						.token.important {
+							color: var(--vscode-editorWarning-foreground, var(--vscode-editor-foreground));
 						}
 					</style>
 					
@@ -344,7 +392,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							--typedown-theme-input-border: var(--vscode-input-border);
 						}
 						
-						/* Center and constrain editor width */
 						html, body {
 							height: 100%;
 							overflow-x: hidden;
@@ -353,10 +400,29 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						body {
 							display: flex;
 							flex-direction: column;
-							align-items: flex-start;
+							align-items: center;
 							margin: 0;
 							padding: 0;
 							background-color: var(--vscode-editor-background);
+							color: var(--vscode-editor-foreground);
+						}
+						
+						#toolbar {
+							position: fixed;
+							top: 0;
+							left: 0;
+							z-index: 1000;
+							display: flex;
+							flex-wrap: wrap;
+							gap: 6px;
+							padding: 6px 8px;
+							box-sizing: border-box;
+							background-color: var(--vscode-editor-background);
+							border-bottom: 1px solid var(--typedown-theme-separator);
+						}
+						
+						body.has-fixed-toolbar {
+							padding-top: 46px;
 						}
 						
 						#editor {
@@ -367,502 +433,207 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							box-sizing: border-box;
 						}
 						
-						/* Fixed toolbar - applied by JavaScript */
-						.toastui-editor-defaultUI-toolbar.typedown-fixed-toolbar {
-							position: fixed !important;
-							top: 0 !important;
-							left: 0 !important;
-							z-index: 1000 !important;
-							overflow: visible !important;
-							clip: none !important;
-							clip-path: none !important;
+						.ProseMirror {
+							padding: 12px 0 40px;
+							outline: none;
+							font-family: ${fontFamily};
+							font-size: ${fontSize}px;
+							-webkit-font-smoothing: subpixel-antialiased;
+							-moz-osx-font-smoothing: auto;
+							text-rendering: geometricPrecision;
+							color: var(--vscode-editor-foreground);
+							min-height: 60vh;
 						}
 						
-						/* Add padding to body to account for fixed toolbar */
-						body.has-fixed-toolbar {
-							padding-top: 45px !important;
+						.ProseMirror code {
+							font-family: ${codeBlockFontFamily};
 						}
 						
-						/* TUI Editor container styles */
-						.toastui-editor-defaultUI {
-							max-width: ${editorWidth} !important;
-							width: 100% !important;
-							margin: 0 !important;
-							box-sizing: border-box;
-							border: none !important;
-							position: relative !important;
+						.ProseMirror pre {
+							background-color: var(--vscode-editor-background);
+							border: 1px solid var(--typedown-theme-table-border);
+							border-radius: 4px;
+							padding: 1em;
+							overflow: auto;
+							position: relative;
+						}
+						
+						.ProseMirror pre[data-language]::before {
+							content: attr(data-language);
+							position: absolute;
+							top: 6px;
+							right: 8px;
+							font-size: 11px;
+							padding: 2px 6px;
+							border-radius: 3px;
+							background-color: var(--vscode-editor-background);
+							color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
+							border: 1px solid var(--typedown-theme-table-border);
+							text-transform: none;
+						}
+						
+						.ProseMirror pre code {
+							background: transparent !important;
+						}
+						
+						.ProseMirror blockquote {
+							border-left: 3px solid var(--typedown-theme-separator);
+							padding-left: 12px;
+							margin-left: 0;
+						}
+						
+						.ProseMirror hr {
+							border-color: var(--typedown-theme-hr-border);
+							opacity: 0.6;
+						}
+						
+						.ProseMirror table {
+							border-collapse: collapse;
+						}
+						
+						.ProseMirror table td,
+						.ProseMirror table th {
+							border: 1px solid var(--typedown-theme-table-border);
+							padding: 6px 10px;
+						}
+						
+						.ProseMirror ul[data-type="taskList"] {
+							list-style: none;
+							padding-left: 0;
+						}
+						
+						.ProseMirror li[data-type="taskItem"] {
+							display: flex;
+							align-items: center;
+							flex-direction: row;
+							gap: 8px;
+						}
+						
+						.ProseMirror li[data-type="taskItem"] > label {
+							display: inline-flex;
+							align-items: center;
+							margin: 0;
+							flex: 0 0 auto;
+						}
+
+						.ProseMirror li[data-checked] {
 							display: flex !important;
-							flex-direction: column !important;
+							align-items: center !important;
+							flex-direction: row !important;
+							gap: 8px !important;
 						}
 						
-						.toastui-editor-defaultUI-toolbar {
-							max-width: ${editorWidth} !important;
-							width: 100% !important;
-							box-sizing: border-box;
-							background-color: var(--vscode-editor-background) !important;
-							border-bottom: 1px solid var(--typedown-theme-separator) !important;
-							flex-shrink: 0 !important;
-						}
-						
-						/* Ensure dropdowns and popups are visible when toolbar is fixed */
-						.toastui-editor-defaultUI-toolbar.typedown-fixed-toolbar .toastui-editor-dropdown-toolbar,
-						.toastui-editor-defaultUI-toolbar.typedown-fixed-toolbar .toastui-editor-popup {
-							position: absolute !important;
-							z-index: 1001 !important;
-							overflow: visible !important;
-							clip: none !important;
-							clip-path: none !important;
-						}
-						
-						/* Ensure all popups/dropdowns can escape their containers */
-						.toastui-editor-dropdown-toolbar,
-						.toastui-editor-popup,
-						.toastui-editor-context-menu {
-							z-index: 1001 !important;
-							overflow: visible !important;
-							clip: none !important;
-							clip-path: none !important;
-						}
-						
-						/* Ensure all TUI Editor dropdowns are visible and properly styled */
-						.toastui-editor-popup-add-heading {
-							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
-							border: 1px solid var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
-							min-width: 150px !important;
-							width: auto !important;
-							min-height: 100px !important;
-							height: auto !important;
-							overflow: visible !important;
-							overflow-y: visible !important;
-							overflow-x: visible !important;
-							display: block !important;
-							visibility: visible !important;
-							opacity: 1 !important;
-							box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.08) !important;
-							z-index: 1002 !important;
-							max-height: none !important;
-						}
-						
-						.toastui-editor-popup-add-heading .toastui-editor-popup-body {
-							display: block !important;
-							visibility: visible !important;
-							opacity: 1 !important;
-							padding: 0 !important;
-							overflow: visible !important;
-							overflow-y: visible !important;
-							overflow-x: visible !important;
-							height: auto !important;
-							min-height: auto !important;
-							max-height: none !important;
-						}
-						
-						.toastui-editor-popup-add-heading ul {
-							display: block !important;
-							visibility: visible !important;
-							opacity: 1 !important;
-							padding: 5px 0 !important;
+						.ProseMirror li[data-checked] > label {
+							display: inline-flex !important;
+							align-items: center !important;
 							margin: 0 !important;
-							list-style: none !important;
-							overflow: visible !important;
-							overflow-y: visible !important;
-							overflow-x: visible !important;
-							height: auto !important;
-							min-height: auto !important;
-							max-height: none !important;
+							flex: 0 0 auto !important;
 						}
 						
-						.toastui-editor-popup-add-heading ul li {
-							display: block !important;
-							visibility: visible !important;
-							opacity: 1 !important;
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-							padding: 4px 12px !important;
-							cursor: pointer !important;
-							white-space: nowrap !important;
-						}
-						
-						.toastui-editor-popup-add-heading ul li:hover {
-							background-color: var(--vscode-list-hoverBackground) !important;
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-add-heading h1,
-						.toastui-editor-popup-add-heading h2,
-						.toastui-editor-popup-add-heading h3,
-						.toastui-editor-popup-add-heading h4,
-						.toastui-editor-popup-add-heading h5,
-						.toastui-editor-popup-add-heading h6 {
-							display: block !important;
-							visibility: visible !important;
-							opacity: 1 !important;
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
+						.ProseMirror li[data-checked] > div {
+							flex: 1 !important;
 							margin: 0 !important;
-							padding: 0 !important;
+							display: inline-block !important;
 						}
 						
-						
-						/* Ensure dropdowns and popups have high z-index - only when they're actually shown */
-						/* Don't force visibility - let TUI Editor control show/hide */
-						
-					.toastui-editor-contents {
-						/* Use editor.fontFamily for regular text, but code blocks will override with higher specificity */
-						font-family: ${fontFamily} !important;
-						font-size: ${fontSize}px !important;
-						-webkit-font-smoothing: subpixel-antialiased;
-						-moz-osx-font-smoothing: auto;
-						text-rendering: geometricPrecision;
-						max-width: ${editorWidth} !important;
-						box-sizing: border-box;
-					}
-						
-						.toastui-editor {
-							max-width: ${editorWidth} !important;
-							width: 100% !important;
-							box-sizing: border-box;
-						}
-						
-						.toastui-editor-defaultUI .toastui-editor-ww-container {
-							background-color: var(--vscode-editor-background) !important;
-							color: var(--vscode-editor-foreground) !important;
-						}
-						
-						.toastui-editor-contents {
-							color: var(--vscode-editor-foreground) !important;
-						}
-						
-						/* Override hardcoded text colors to respect theme */
-						.toastui-editor-contents p,
-						.toastui-editor-contents h1,
-						.toastui-editor-contents h2,
-						.toastui-editor-contents h3,
-						.toastui-editor-contents h4,
-						.toastui-editor-contents h5,
-						.toastui-editor-contents h6,
-						.toastui-editor-contents li,
-						.toastui-editor-contents blockquote,
-						.toastui-editor-contents a {
-							color: var(--vscode-editor-foreground) !important;
-						}
-						
-						/* Inline code elements should also use typedown.editor.codeBlockfontFamily (or editor.fontFamily as fallback) */
-						.toastui-editor-contents :not(pre) > code,
-						.toastui-editor-contents p code,
-						.toastui-editor-contents li code,
-						.toastui-editor-contents td code,
-						.toastui-editor-contents th code {
-							font-family: ${codeBlockFontFamily} !important;
-						}
-						
-						/* Toolbar button styling */
-						.toastui-editor-defaultUI-toolbar button {
-							background-color: transparent !important;
-							border: 1px solid transparent !important;
-							color: var(--vscode-button-foreground, var(--vscode-foreground)) !important;
-							border-radius: 3px !important;
-							transition: background-color 0.2s, border-color 0.2s, color 0.2s !important;
-						}
-						
-						.toastui-editor-defaultUI-toolbar button:not(:disabled):hover {
-							background-color: var(--vscode-list-hoverBackground) !important;
-							border-color: var(--vscode-list-hoverBackground) !important;
-							color: var(--vscode-button-foreground, var(--vscode-foreground)) !important;
-						}
-						
-						.toastui-editor-defaultUI-toolbar button:not(:disabled):active {
-							background-color: var(--vscode-list-activeSelectionBackground) !important;
-							border-color: var(--vscode-list-activeSelectionBackground) !important;
-							color: var(--vscode-button-foreground, var(--vscode-foreground)) !important;
-						}
-						
-						.toastui-editor-defaultUI-toolbar button:not(:disabled).active {
-							background-color: var(--vscode-button-background) !important;
-							border-color: var(--vscode-button-background) !important;
-							color: var(--vscode-button-foreground) !important;
-						}
-						
-						.toastui-editor-toolbar-icons {
-							background-color: transparent !important;
-							color: inherit !important;
-							/* Make icons brighter and more visible on dark backgrounds */
-							filter: brightness(1.5) contrast(1.2) !important;
-							opacity: 0.9 !important;
-						}
-						
-						.toastui-editor-toolbar-icons:not(:disabled):hover {
-							filter: brightness(1.8) contrast(1.3) !important;
-							opacity: 1 !important;
-						}
-						
-						.toastui-editor-toolbar-icons:not(:disabled).active {
-							filter: brightness(2) contrast(1.4) !important;
-							opacity: 1 !important;
-						}
-						
-						.toastui-editor-toolbar-icons:disabled {
-							filter: brightness(0.5) contrast(0.8) !important;
-							opacity: 0.3 !important;
-						}
-						
-						.toastui-editor-toolbar-divider {
-							background-color: var(--typedown-theme-separator) !important;
-							opacity: 0.5 !important;
-						}
-						
-						/* Dropdown menu styles */
-						.toastui-editor-dropdown-toolbar {
-							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
-							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
-							z-index: 1001 !important;
-							overflow: visible !important;
-						}
-						
-						.toastui-editor-dropdown-toolbar button {
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-dropdown-toolbar .toastui-editor-toolbar-icons {
-							filter: brightness(1.5) contrast(1.2) !important;
-							opacity: 0.9 !important;
-						}
-						
-						.toastui-editor-dropdown-toolbar .toastui-editor-toolbar-icons:not(:disabled):hover {
-							filter: brightness(1.8) contrast(1.3) !important;
-							opacity: 1 !important;
-						}
-						
-						.toastui-editor-popup .toastui-editor-toolbar-icons {
-							filter: brightness(1.5) contrast(1.2) !important;
-							opacity: 0.9 !important;
-						}
-						
-						.toastui-editor-popup .toastui-editor-toolbar-icons:not(:disabled):hover {
-							filter: brightness(1.8) contrast(1.3) !important;
-							opacity: 1 !important;
-						}
-						
-						/* Popup/dropdown menu items */
-						.toastui-editor-popup {
-							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
-							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-							z-index: 1001 !important;
-							overflow: visible !important;
-						}
-						
-						/* Context menu styles */
-						.toastui-editor-context-menu {
-							z-index: 1001 !important;
-							overflow: visible !important;
-						}
-						
-						.toastui-editor-popup-body {
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-body label {
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-add-heading ul li {
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-add-heading ul li:hover {
-							background-color: var(--vscode-list-hoverBackground) !important;
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-add-heading h1,
-						.toastui-editor-popup-add-heading h2,
-						.toastui-editor-popup-add-heading h3,
-						.toastui-editor-popup-add-heading h4,
-						.toastui-editor-popup-add-heading h5,
-						.toastui-editor-popup-add-heading h6 {
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-add-image .toastui-editor-tabs .tab-item {
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-add-image .toastui-editor-tabs .tab-item.active {
-							color: var(--vscode-button-foreground, var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground))) !important;
-							border-bottom-color: var(--vscode-button-background, var(--vscode-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-add-image .toastui-editor-file-name {
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-add-image .toastui-editor-file-name.has-file {
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-add-table .toastui-editor-table-description {
-							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
-						}
-						
-						.toastui-editor-popup-body input[type='text'] {
-							background-color: var(--typedown-theme-input-bg, var(--vscode-input-background)) !important;
-							color: var(--typedown-theme-input-fg, var(--vscode-input-foreground)) !important;
-							border-color: var(--typedown-theme-input-border, var(--vscode-input-border)) !important;
-						}
-						
-						.toastui-editor-popup-body input[type='text']:focus {
-							outline-color: var(--vscode-button-background, var(--vscode-foreground)) !important;
-						}
-						
-						/* Hide mode switch footer (Markdown/WYSIWYG tabs) */
-						.toastui-editor-mode-switch {
-							display: none !important;
-						}
-						
-						/* Table styles */
-						.toastui-editor-contents table {
-							border-color: var(--typedown-theme-table-border) !important;
-						}
-						
-						.toastui-editor-contents table td,
-						.toastui-editor-contents table th {
-							border-color: var(--typedown-theme-table-border) !important;
-							padding: 8px 12px !important;
-						}
-						
-						.toastui-editor-contents table th {
-							background-color: transparent !important;
-							color: var(--vscode-editor-foreground) !important;
-							font-weight: bold !important;
-						}
-						
-						.toastui-editor-contents table th p {
-							color: var(--vscode-editor-foreground) !important;
-						}
-						
-						/* Horizontal rule styles */
-						.toastui-editor-contents hr {
-							border-color: var(--typedown-theme-hr-border) !important;
-							opacity: 0.6 !important;
-						}
-						
-						/* Code block styles */
-						.toastui-editor-contents .toastui-editor-ww-code-block,
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting {
-							background-color: var(--vscode-editor-background) !important;
-							border: 1px solid var(--typedown-theme-table-border) !important;
-							border-radius: 4px !important;
-							padding: 1em !important;
-							margin: 0.5em 0 !important;
-							box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
-						}
-						
-						/* Code blocks use typedown.editor.codeBlockfontFamily (or editor.fontFamily as fallback) - override any inherited fonts with maximum specificity */
-						.toastui-editor-contents .toastui-editor-ww-code-block,
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting,
-						.toastui-editor-contents .toastui-editor-ww-code-block *,
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting *,
-						.toastui-editor-contents .toastui-editor-ww-code-block pre,
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre,
-						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block code,
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting code,
-						.toastui-editor-contents .toastui-editor-ww-code-block pre code:not([class*="language-"]),
-						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) code,
-						.toastui-editor-contents .toastui-editor-ww-code-block code:not([class*="language-"]),
-						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) {
-							font-family: ${codeBlockFontFamily} !important;
-						}
-						
-						/* Remove inner border/padding from PrismJS pre elements */
-						.toastui-editor-contents .toastui-editor-ww-code-block pre,
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre,
-						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre[class*="language-"] {
-							background-color: transparent !important;
-							color: var(--vscode-editor-foreground) !important;
+						.ProseMirror li[data-checked] > div > p {
+							display: inline !important;
 							margin: 0 !important;
-							padding: 0 !important;
-							border: none !important;
 						}
 						
-						.toastui-editor-contents .toastui-editor-ww-code-block code,
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting code {
-							background-color: transparent !important;
-							color: var(--vscode-editor-foreground) !important;
-							border: none !important;
+						.ProseMirror li[data-checked] > label input {
+							margin: 0 6px 0 0 !important;
+							vertical-align: middle !important;
 						}
 						
-						/* CRITICAL: Override PrismJS default light background - must be very specific */
+						.ProseMirror li[data-type="taskItem"] > div {
+							flex: 1;
+							margin: 0;
+							display: inline-block;
+						}
+						
+						.ProseMirror li[data-type="taskItem"] > label input {
+							margin: 0 6px 0 0;
+							vertical-align: middle;
+						}
+						
+						.typedown-toolbar button,
+						.typedown-toolbar select {
+							background-color: transparent;
+							border: 1px solid transparent;
+							color: var(--vscode-button-foreground, var(--vscode-foreground));
+							border-radius: 3px;
+							padding: 4px 6px;
+							transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+							font-size: 12px;
+						}
+						
+						.typedown-toolbar button svg {
+							width: 16px;
+							height: 16px;
+							display: block;
+						}
+						
+						.typedown-toolbar button[data-tooltip] {
+							position: relative;
+						}
+						
+						.typedown-toolbar button[data-tooltip]::after {
+							content: attr(data-tooltip);
+							position: absolute;
+							bottom: -28px;
+							left: 50%;
+							transform: translateX(-50%);
+							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background));
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground));
+							border: 1px solid var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border));
+							border-radius: 4px;
+							padding: 2px 6px;
+							font-size: 11px;
+							white-space: nowrap;
+							opacity: 0;
+							pointer-events: none;
+							transition: opacity 0.15s ease-in-out;
+							z-index: 1002;
+						}
+						
+						.typedown-toolbar button[data-tooltip]:hover::after,
+						.typedown-toolbar button[data-tooltip]:focus::after {
+							opacity: 1;
+						}
+						
+						.typedown-toolbar button:hover,
+						.typedown-toolbar select:hover {
+							background-color: var(--vscode-list-hoverBackground);
+							border-color: var(--vscode-list-hoverBackground);
+						}
+						
+						.typedown-toolbar button.active {
+							background-color: var(--vscode-button-background);
+							border-color: var(--vscode-button-background);
+							color: var(--vscode-button-foreground);
+						}
+						
+						.typedown-toolbar select {
+							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background));
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground));
+							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border));
+						}
+						
+						/* Prism background overrides */
 						:not(pre) > code[class*="language-"],
 						pre[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block code[class*="language-"],
-						.toastui-editor-contents pre[class*="language-"],
-						.toastui-editor-contents code[class*="language-"] {
+						.ProseMirror pre[class*="language-"],
+						.ProseMirror code[class*="language-"] {
 							background: transparent !important;
 							background-color: transparent !important;
-							text-shadow: none !important;
-						}
-						
-						/* Fix for code blocks without language - match styling to highlighted blocks */
-						.toastui-editor-contents .toastui-editor-ww-code-block pre code:not([class*="language-"]),
-						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) code,
-						.toastui-editor-contents .toastui-editor-ww-code-block code:not([class*="language-"]),
-						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) {
-							color: var(--vscode-editor-foreground) !important;
-							background-color: transparent !important;
-							border: none !important;
-						}
-						
-						/* Ensure ALL code blocks (with or without language) have the same background */
-						.toastui-editor-contents .toastui-editor-ww-code-block,
-						.toastui-editor-contents .toastui-editor-ww-code-block:not(.toastui-editor-ww-code-block-highlighting),
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting {
-							background-color: var(--vscode-editor-background) !important;
-						}
-						
-						/* Remove any white backgrounds that might be applied */
-						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]),
-						.toastui-editor-contents .toastui-editor-ww-code-block pre code:not([class*="language-"]) {
-							background-color: transparent !important;
-							background: transparent !important;
-						}
-						
-						/* Theme-aware PrismJS - we switch between light and dark PrismJS themes via CSS media queries */
-						/* PrismJS default colors are preserved - light theme for light mode, dark theme for dark mode */
-						
-						
-						/* Language label styling */
-						.toastui-editor-contents .toastui-editor-ww-code-block:after,
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting:after {
-							background-color: var(--vscode-editor-background) !important;
-							color: var(--vscode-descriptionForeground, var(--vscode-foreground)) !important;
-							border: 1px solid var(--typedown-theme-table-border) !important;
-						}
-						
-						/* Code block language input styling */
-						.toastui-editor-code-block-language-input {
-							background-color: var(--typedown-theme-input-bg, var(--vscode-input-background)) !important;
-							border-color: var(--typedown-theme-input-border, var(--vscode-input-border)) !important;
-							color: var(--typedown-theme-input-fg, var(--vscode-input-foreground)) !important;
-						}
-						
-						.toastui-editor-code-block-language-input input {
-							background-color: transparent !important;
-							color: var(--typedown-theme-input-fg, var(--vscode-input-foreground)) !important;
 						}
 					</style>
 					<style id="font-size-style"></style>
 					<style id="prism-theme-override">
 						/* Final override for PrismJS - ensure transparent backgrounds and remove inner borders */
-						.toastui-editor-contents pre[class*="language-"],
-						.toastui-editor-contents code[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block code[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting code[class*="language-"] {
+						.ProseMirror pre[class*="language-"],
+						.ProseMirror code[class*="language-"] {
 							background: transparent !important;
 							background-color: transparent !important;
 							text-shadow: none !important;
@@ -872,23 +643,24 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						}
 						
 						/* Remove PrismJS default padding from pre elements inside code blocks */
-						.toastui-editor-contents .toastui-editor-ww-code-block pre[class*="language-"],
-						.toastui-editor-contents .toastui-editor-ww-code-block-highlighting pre[class*="language-"] {
+						.ProseMirror pre[class*="language-"] {
 							padding: 0 !important;
 							margin: 0 !important;
 						}
 						
 						/* Ensure unhighlighted code is visible and matches highlighted blocks */
-						.toastui-editor-contents .toastui-editor-ww-code-block pre:not([class*="language-"]) code,
-						.toastui-editor-contents .toastui-editor-ww-code-block pre code:not([class*="language-"]),
-						.toastui-editor-contents .toastui-editor-ww-code-block code:not([class*="language-"]) {
+						.ProseMirror pre:not([class*="language-"]) code,
+						.ProseMirror pre code:not([class*="language-"]),
+						.ProseMirror code:not([class*="language-"]) {
 							color: var(--vscode-editor-foreground) !important;
 							background: transparent !important;
 							border: none !important;
 						}
 					</style>
+					<style id="prism-vscode-theme"></style>
 				</head>
 				<body>
+					<div id="toolbar" class="typedown-toolbar"></div>
 					<div id="editor"></div>
 
 					<script nonce="${nonce}">
@@ -899,8 +671,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						
 						// Add error handler for uncaught errors in the bundle
 						window.addEventListener('error', function(event) {
-							if (event.filename && event.filename.includes('tui-editor-bundle')) {
-								console.error('Error in tui-editor-bundle.js:', event.message, event.filename, event.lineno, event.colno);
+							if (event.filename && event.filename.includes('tiptap-bundle')) {
+								console.error('Error in tiptap-bundle.js:', event.message, event.filename, event.lineno, event.colno);
 								window.__bundleError = {
 									message: event.message,
 									filename: event.filename,
@@ -918,43 +690,43 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						
 						// Set up bundle load tracking BEFORE script is added
 						function setupBundleTracking() {
-							const bundleScript = document.querySelector('script[src*="tui-editor-bundle"]');
+							const bundleScript = document.querySelector('script[src*="tiptap-bundle"]');
 							if (bundleScript) {
 								// Check if script is already loaded (complete property)
 								if (bundleScript.complete || bundleScript.readyState === 'complete' || bundleScript.readyState === 'loaded') {
-									console.log('tui-editor-bundle.js already loaded');
+									console.log('tiptap-bundle.js already loaded');
 									window.__bundleLoaded = true;
 									// Trigger init immediately if bundle is ready
-									if (window.toastui && window.toastui.Editor) {
+									if (window.tiptap && window.tiptap.Editor) {
 										setTimeout(function() {
 											if (window.initEditor) window.initEditor();
 										}, 0);
 									}
 								} else {
 									bundleScript.addEventListener('load', function() {
-										console.log('tui-editor-bundle.js loaded successfully');
+										console.log('tiptap-bundle.js loaded successfully');
 										window.__bundleLoaded = true;
 										// Trigger init immediately when bundle loads
-										if (window.toastui && window.toastui.Editor) {
+										if (window.tiptap && window.tiptap.Editor) {
 											setTimeout(function() {
 												if (window.initEditor) window.initEditor();
 											}, 0);
 										}
 									});
 									bundleScript.addEventListener('error', function() {
-										console.error('Failed to load tui-editor-bundle.js:', bundleScript.src);
+										console.error('Failed to load tiptap-bundle.js:', bundleScript.src);
 										window.__bundleLoadError = true;
 									});
 								}
 							}
 						}
 					</script>
-					<script nonce="${nonce}" src="${tuiEditorJsUri}"></script>
+					<script nonce="${nonce}" src="${tiptapEditorJsUri}"></script>
 					<script nonce="${nonce}">
 						// Setup bundle tracking after script tag is added
 						setupBundleTracking();
 						// Also check immediately if bundle is already available
-						if (window.toastui && window.toastui.Editor) {
+						if (window.tiptap && window.tiptap.Editor) {
 							setTimeout(function() {
 								if (window.initEditor) window.initEditor();
 							}, 0);
@@ -1053,7 +825,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 										
 										// Set theme attribute on body and editor container
 										document.body.setAttribute('data-theme', theme);
-										const editorContainer = document.querySelector('.toastui-editor-contents');
+										const editorContainer = document.querySelector('.ProseMirror');
 										if (editorContainer) {
 											editorContainer.setAttribute('data-theme', theme);
 										}
@@ -1061,27 +833,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 								}
 							}
 							
-							// Function to switch PrismJS theme based on detected theme
-							function switchPrismTheme(theme) {
-								const lightTheme = document.getElementById('prism-theme-light');
-								const darkTheme = document.getElementById('prism-theme-dark');
-								if (lightTheme && darkTheme) {
-									if (theme === 'dark') {
-										lightTheme.setAttribute('media', 'none');
-										darkTheme.setAttribute('media', 'all');
-									} else {
-										lightTheme.setAttribute('media', 'all');
-										darkTheme.setAttribute('media', 'none');
-									}
-								}
-							}
-							
 							// Detect theme immediately
 							detectAndSetTheme();
-							const initialTheme = document.body.getAttribute('data-theme');
-							if (initialTheme) {
-								switchPrismTheme(initialTheme);
-							}
 						})();
 					</script>
 					<script nonce="${nonce}" src="${initScriptUri}"></script>

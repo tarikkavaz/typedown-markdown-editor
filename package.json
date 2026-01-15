@@ -20,7 +20,7 @@
 		"markdown",
 		"editor",
 		"wysiwyg",
-		"tui-editor"
+		"tiptap"
 	],
 	"activationEvents": [
 		"onCustomEditor:typedown.markdownEditor",
@@ -125,6 +125,12 @@
 					"default": null,
 					"description": "Font family for code blocks in the markdown editor. If not set, uses VS Code's editor.fontFamily setting.",
 					"markdownDescription": "Font family for code blocks in the markdown editor. If not set, uses VS Code's `editor.fontFamily` setting."
+				},
+				"typedown.editor.prismThemePath": {
+					"type": "string",
+					"default": "",
+					"description": "Absolute path to a custom Prism CSS file to override syntax highlighting styles.",
+					"markdownDescription": "Absolute path to a custom Prism CSS file to override syntax highlighting styles."
 				}
 			}
 		}
@@ -150,9 +156,20 @@
 		"webpack-cli": "^5.1.0"
 	},
 	"dependencies": {
-		"@toast-ui/editor": "^3.2.2",
-		"@toast-ui/editor-plugin-code-syntax-highlight": "^3.0.0-alpha.0",
+		"@tiptap/core": "^3.15.3",
+		"@tiptap/extension-code-block": "^3.15.3",
+		"@tiptap/extension-image": "^3.15.3",
+		"@tiptap/extension-link": "^3.15.3",
+		"@tiptap/extension-table": "^3.15.3",
+		"@tiptap/extension-table-cell": "^3.15.3",
+		"@tiptap/extension-table-header": "^3.15.3",
+		"@tiptap/extension-table-row": "^3.15.3",
+		"@tiptap/extension-task-item": "^3.15.3",
+		"@tiptap/extension-task-list": "^3.15.3",
+		"@tiptap/pm": "^3.15.3",
+		"@tiptap/starter-kit": "^3.15.3",
 		"prettier": "^3.0.0",
-		"prismjs": "^1.30.0"
+		"prismjs": "^1.30.0",
+		"tiptap-markdown": "^0.9.0"
 	}
 }

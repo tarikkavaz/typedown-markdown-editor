@@ -16,5 +16,5 @@ dist/node_modules-*.js.map
 ckeditor5-build-markdown/**
 **/*.worker.js
 **/*.worker.js.map
-src/tui-editor-bundle.js
+src/tiptap-bundle.js
 src/build-editor-bundle.js
