@@ -73,7 +73,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			localResourceRoots: [this.context.extensionUri, documentFolderUri],
 		};
 		const sidebarForegroundColor = this.getSideBarForegroundColor();
-		webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, sidebarForegroundColor);
+		const baseFolderUri = vscode.Uri.file(path.dirname(document.uri.fsPath) + path.sep);
+		const baseWebviewUri = webviewPanel.webview.asWebviewUri(baseFolderUri).toString();
+		webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, sidebarForegroundColor, baseWebviewUri);
 		
 		// Send theme color to webview
 		webviewPanel.webview.postMessage({
@@ -123,8 +125,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			text: normalizedInitialText 
 		});
 
-		const baseFolderUri = vscode.Uri.file(path.dirname(document.uri.fsPath) + path.sep);
-		const baseWebviewUri = webviewPanel.webview.asWebviewUri(baseFolderUri).toString();
 		webviewPanel.webview.postMessage({
 			type: 'baseUriChanged',
 			baseUri: baseWebviewUri,
@@ -292,6 +292,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				case 'plainPaste':
 					vscode.commands.executeCommand('editor.action.clipboardPasteAction');
 					return;
+				case 'requestWebviewRefresh':
+					updateWebview();
+					return;
 				case 'requestImageInsert': {
 					const altText = await vscode.window.showInputBox({
 						prompt: 'Image alt text',
@@ -345,7 +348,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 	}
 
 	// Get the static html used for the editor webviews.
-	private getHtmlForWebview(webview: vscode.Webview, sidebarForegroundColor: string = ''): string {
+	private getHtmlForWebview(webview: vscode.Webview, sidebarForegroundColor: string = '', baseWebviewUri: string = ''): string {
 		// Local path to script and css for the webview
 		const initScriptUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'src', 'markdownEditorInitScript.js')
@@ -381,7 +384,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		return html/* html */ `<!DOCTYPE html>
 			<html lang="en">
 				<head>
-					<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}' ${cspSource}; style-src 'unsafe-inline' ${cspSource}; img-src ${cspSource} data: file: vscode-file: vscode-resource:;" />
+					<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}' ${cspSource}; style-src 'unsafe-inline' ${cspSource}; img-src ${cspSource} data: file: vscode-file: vscode-resource: https: vscode-webview:;" />
 
 					<meta charset="UTF-8" />
 					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -805,6 +808,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					<div id="toolbar" class="typedown-toolbar"></div>
 					<div id="editor"></div>
 
+					<script nonce="${nonce}">
+						window.__typedownBaseUri = ${JSON.stringify(baseWebviewUri)};
+					</script>
 					<script nonce="${nonce}">
 						// Track bundle loading state
 						window.__bundleLoaded = false;

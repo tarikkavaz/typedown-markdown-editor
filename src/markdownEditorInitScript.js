@@ -9,7 +9,7 @@ let initializedFlag = false;
 let pendingContent = null;
 let suppressNextChangeEvent = false;
 let lastMarkdown = '';
-let imageBaseUri = '';
+let imageBaseUri = typeof window !== 'undefined' && window.__typedownBaseUri ? window.__typedownBaseUri : '';
 let linkDialog = null;
 
 function getTiptapBundle() {
@@ -55,6 +55,49 @@ function updateImageSources() {
 		const resolved = resolveImageSrc(current);
 		if (resolved && resolved !== img.src) {
 			img.src = resolved;
+		}
+	});
+}
+
+function setupImageObserver() {
+	if (!editor) {
+		return;
+	}
+
+	const root = editor.view?.dom;
+	if (!root) {
+		return;
+	}
+
+	const observer = new MutationObserver(() => {
+		updateImageSources();
+	});
+
+	observer.observe(root, {
+		childList: true,
+		subtree: true,
+	});
+
+}
+
+function forceImageRerender() {
+	if (!editor) {
+		return;
+	}
+
+	const root = editor.view?.dom;
+	if (!root) {
+		return;
+	}
+
+	root.querySelectorAll('img').forEach((img) => {
+		const current = img.getAttribute('src') || '';
+		const resolved = resolveImageSrc(current);
+		if (resolved) {
+			img.src = '';
+			requestAnimationFrame(() => {
+				img.src = resolved;
+			});
 		}
 	});
 }
@@ -507,6 +550,7 @@ function setupEditorHandlers() {
 		lastMarkdown = markdown;
 		vscode.postMessage({ type: 'webviewChanged', text: markdown });
 		updateToolbarActiveStates();
+		requestAnimationFrame(() => updateImageSources());
 	});
 
 	editor.on('selectionUpdate', () => {
@@ -577,6 +621,46 @@ function initEditor() {
 	});
 
 	const ImageWithBase = Image.extend({
+		addNodeView() {
+			return ({ node }) => {
+				console.log('[Typedown] ImageWithBase nodeView created, src:', node.attrs.src, 'baseUri:', imageBaseUri);
+				const img = document.createElement('img');
+				
+				// Add load/error handlers for debugging
+				img.onload = () => {
+					console.log('[Typedown] Image loaded successfully:', img.src);
+					console.log('[Typedown] Image dimensions:', img.naturalWidth, 'x', img.naturalHeight);
+					console.log('[Typedown] Image in DOM:', document.body.contains(img));
+					console.log('[Typedown] Image computed display:', getComputedStyle(img).display);
+					console.log('[Typedown] Image computed visibility:', getComputedStyle(img).visibility);
+					console.log('[Typedown] Image offsetParent:', img.offsetParent);
+					console.log('[Typedown] Image clientWidth/Height:', img.clientWidth, img.clientHeight);
+				};
+				img.onerror = (e) => {
+					console.error('[Typedown] Image failed to load:', img.src, e);
+				};
+				
+				const update = (nextNode) => {
+					if (nextNode.type.name !== 'image') {
+						return false;
+					}
+					const src = resolveImageSrc(nextNode.attrs.src);
+					console.log('[Typedown] ImageWithBase update, attrs.src:', nextNode.attrs.src, '-> resolved:', src);
+					if (src) {
+						img.src = src;
+						console.log('[Typedown] After setting, img.src is:', img.src);
+					}
+					if (nextNode.attrs.alt) {
+						img.alt = nextNode.attrs.alt;
+					} else {
+						img.removeAttribute('alt');
+					}
+					return true;
+				};
+				update(node);
+				return { dom: img, update };
+			};
+		},
 		renderHTML({ node, HTMLAttributes }) {
 			const src = resolveImageSrc(node.attrs.src);
 			return ['img', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { src })];
@@ -644,6 +728,7 @@ function initEditor() {
 
 	setupEditorHandlers();
 	buildToolbar();
+	setupImageObserver();
 
 	if (pendingContent !== null) {
 		setEditorContent(pendingContent);
@@ -736,16 +821,21 @@ window.addEventListener('message', (event) => {
 			if (typeof message.baseUri === 'string') {
 				imageBaseUri = message.baseUri;
 			}
-			editor.chain().focus().insertContent({
-				type: 'image',
-				attrs: {
-					src: message.src,
-					alt: message.altText || 'Image',
-				},
-			}).run();
-			editor.chain().focus().insertContent({ type: 'paragraph' }).run();
-			updateImageSources();
-			requestAnimationFrame(() => updateImageSources());
+			console.log('[Typedown] Inserting image:', message.src, 'baseUri:', imageBaseUri);
+			
+			// Insert image and paragraph in a single transaction
+			editor.chain()
+				.focus()
+				.insertContent([
+					{ type: 'image', attrs: { src: message.src, alt: message.altText || 'Image' } },
+					{ type: 'paragraph' },
+				])
+				.run();
+			
+			// Force update image sources after DOM is settled
+			setTimeout(() => {
+				updateImageSources();
+			}, 50);
 			break;
 		}
 		case 'prismThemeChanged': {
