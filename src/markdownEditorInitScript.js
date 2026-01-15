@@ -59,6 +59,17 @@ function updateImageSources() {
 	});
 }
 
+function normalizeMarkdownImages(markdown) {
+	if (!markdown) {
+		return markdown;
+	}
+	// Ensure images are on their own line with a blank line after.
+	let normalized = markdown;
+	normalized = normalized.replace(/(!\[[^\]]*\]\([^)]+\))(?!\r?\n)/g, '$1\n\n');
+	normalized = normalized.replace(/(!\[[^\]]*\]\([^)]+\))\r?\n(?!\r?\n)/g, '$1\n\n');
+	return normalized;
+}
+
 function createPrismDecorations(doc, prismInstance) {
 	const { Decoration, DecorationSet } = window.tiptap;
 	const decorations = [];
@@ -488,9 +499,10 @@ function setupEditorHandlers() {
 			return;
 		}
 
-		const markdown = editor.storage?.markdown?.getMarkdown
+		const rawMarkdown = editor.storage?.markdown?.getMarkdown
 			? editor.storage.markdown.getMarkdown()
 			: editor.getText();
+		const markdown = normalizeMarkdownImages(rawMarkdown.replace(/\\\n/g, '\n'));
 
 		lastMarkdown = markdown;
 		vscode.postMessage({ type: 'webviewChanged', text: markdown });
@@ -717,12 +729,22 @@ window.addEventListener('message', (event) => {
 			}
 			break;
 		}
-		case 'insertImageMarkdown': {
-			if (!editor || !message.text) {
+		case 'insertImage': {
+			if (!editor || !message.src) {
 				return;
 			}
-			const markdown = `\n\n${message.text}\n\n`;
-			editor.chain().focus().insertContent(markdown, { contentType: 'markdown' }).run();
+			if (typeof message.baseUri === 'string') {
+				imageBaseUri = message.baseUri;
+			}
+			editor.chain().focus().insertContent({
+				type: 'image',
+				attrs: {
+					src: message.src,
+					alt: message.altText || 'Image',
+				},
+			}).run();
+			editor.chain().focus().insertContent({ type: 'paragraph' }).run();
+			updateImageSources();
 			requestAnimationFrame(() => updateImageSources());
 			break;
 		}

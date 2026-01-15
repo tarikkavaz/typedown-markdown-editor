@@ -333,8 +333,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
 					const relativePath = path.relative(docDir, targetPath).replace(/\\/g, '/');
 					webviewPanel.webview.postMessage({
-						type: 'insertImageMarkdown',
-						text: `![${altText || 'Image'}](${relativePath})`,
+						type: 'insertImage',
+						src: relativePath,
+						altText: altText || 'Image',
+						baseUri: baseWebviewUri,
 					});
 					return;
 				}
