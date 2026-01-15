@@ -9,12 +9,54 @@ let initializedFlag = false;
 let pendingContent = null;
 let suppressNextChangeEvent = false;
 let lastMarkdown = '';
+let imageBaseUri = '';
+let linkDialog = null;
 
 function getTiptapBundle() {
 	return (typeof window !== 'undefined' && window.tiptap) ||
 		(typeof self !== 'undefined' && self.tiptap) ||
 		(typeof globalThis !== 'undefined' && globalThis.tiptap) ||
 		null;
+}
+
+function resolveImageSrc(src) {
+	if (!src) {
+		return src;
+	}
+
+	const lower = src.toLowerCase();
+	if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('data:') || lower.startsWith('vscode-resource:') || lower.startsWith('vscode-file:')) {
+		return src;
+	}
+
+	if (!imageBaseUri) {
+		return src;
+	}
+
+	try {
+		return new URL(src, imageBaseUri).toString();
+	} catch (error) {
+		return src;
+	}
+}
+
+function updateImageSources() {
+	if (!editor) {
+		return;
+	}
+
+	const root = editor.view?.dom;
+	if (!root) {
+		return;
+	}
+
+	root.querySelectorAll('img').forEach((img) => {
+		const current = img.getAttribute('src') || '';
+		const resolved = resolveImageSrc(current);
+		if (resolved && resolved !== img.src) {
+			img.src = resolved;
+		}
+	});
 }
 
 function createPrismDecorations(doc, prismInstance) {
@@ -85,6 +127,7 @@ function setEditorContent(text) {
 	suppressNextChangeEvent = false;
 	lastMarkdown = text;
 	initializedFlag = true;
+	requestAnimationFrame(() => updateImageSources());
 }
 
 function updateToolbarPosition(toolbar) {
@@ -189,6 +232,100 @@ function buildToolbar() {
 	updateToolbarActiveStates();
 }
 
+function ensureLinkDialog() {
+	if (linkDialog) {
+		return linkDialog;
+	}
+
+	const overlay = document.createElement('div');
+	overlay.className = 'typedown-dialog-overlay';
+
+	const dialog = document.createElement('div');
+	dialog.className = 'typedown-dialog';
+	dialog.innerHTML = `
+		<div class="typedown-dialog-title">Edit link</div>
+		<label class="typedown-dialog-field">
+			<span>Text</span>
+			<input type="text" data-link-text />
+		</label>
+		<label class="typedown-dialog-field">
+			<span>URL</span>
+			<input type="text" data-link-url />
+		</label>
+		<div class="typedown-dialog-actions">
+			<button type="button" data-dialog-cancel>Cancel</button>
+			<button type="button" data-dialog-confirm>Save</button>
+		</div>
+	`;
+
+	overlay.appendChild(dialog);
+	document.body.appendChild(overlay);
+
+	linkDialog = {
+		overlay,
+		dialog,
+		textInput: dialog.querySelector('input[data-link-text]'),
+		urlInput: dialog.querySelector('input[data-link-url]'),
+		confirmButton: dialog.querySelector('button[data-dialog-confirm]'),
+		cancelButton: dialog.querySelector('button[data-dialog-cancel]'),
+	};
+
+	linkDialog.cancelButton.addEventListener('click', () => {
+		overlay.classList.remove('is-visible');
+	});
+
+	overlay.addEventListener('click', (event) => {
+		if (event.target === overlay) {
+			overlay.classList.remove('is-visible');
+		}
+	});
+
+	return linkDialog;
+}
+
+function promptForImage() {
+	vscode.postMessage({
+		type: 'requestImageInsert',
+	});
+}
+
+function openLinkDialog({ text, url, onConfirm }) {
+	const dialog = ensureLinkDialog();
+	dialog.textInput.value = text || '';
+	dialog.urlInput.value = url || '';
+	dialog.overlay.classList.add('is-visible');
+
+	requestAnimationFrame(() => {
+		if (dialog.urlInput.value) {
+			dialog.urlInput.focus();
+			dialog.urlInput.select();
+		} else {
+			dialog.textInput.focus();
+		}
+	});
+
+	const handleConfirm = () => {
+		const nextText = dialog.textInput.value.trim();
+		const nextUrl = dialog.urlInput.value.trim();
+		dialog.overlay.classList.remove('is-visible');
+		onConfirm(nextText, nextUrl);
+	};
+
+	const handleKeydown = (event) => {
+		if (event.key === 'Escape') {
+			dialog.overlay.classList.remove('is-visible');
+		}
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			handleConfirm();
+		}
+	};
+
+	dialog.confirmButton.onclick = handleConfirm;
+	dialog.textInput.onkeydown = handleKeydown;
+	dialog.urlInput.onkeydown = handleKeydown;
+}
+
 function handleToolbarAction(action, button) {
 	if (!editor) {
 		return;
@@ -237,23 +374,42 @@ function handleToolbarAction(action, button) {
 			editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
 			break;
 		case 'image': {
-			const url = window.prompt('Image URL');
-			if (url) {
-				editor.chain().focus().setImage({ src: url }).run();
-			}
+			promptForImage();
 			break;
 		}
 		case 'link': {
-			const previousUrl = editor.getAttributes('link').href || '';
-			const url = window.prompt('Link URL', previousUrl);
-			if (url === null) {
-				return;
+			const { from, to, empty } = editor.state.selection;
+			const existingUrl = editor.getAttributes('link').href || '';
+			let linkText = '';
+
+			if (!empty) {
+				linkText = editor.state.doc.textBetween(from, to, ' ');
 			}
-			if (url === '') {
-				editor.chain().focus().unsetLink().run();
-			} else {
-				editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
-			}
+
+			const initialText = linkText || existingUrl || '';
+			const initialUrl = existingUrl || linkText || '';
+
+			openLinkDialog({
+				text: initialText,
+				url: initialUrl,
+				onConfirm: (nextText, nextUrl) => {
+					if (!nextUrl) {
+						editor.chain().focus().unsetLink().run();
+						return;
+					}
+
+					if (empty || !linkText) {
+						const insertText = nextText || nextUrl;
+						editor.chain().focus().insertContent({
+							type: 'text',
+							text: insertText,
+							marks: [{ type: 'link', attrs: { href: nextUrl } }],
+						}).run();
+					} else {
+						editor.chain().focus().extendMarkRange('link').setLink({ href: nextUrl }).run();
+					}
+				},
+			});
 			break;
 		}
 		case 'code':
@@ -408,6 +564,13 @@ function initEditor() {
 		},
 	});
 
+	const ImageWithBase = Image.extend({
+		renderHTML({ node, HTMLAttributes }) {
+			const src = resolveImageSrc(node.attrs.src);
+			return ['img', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { src })];
+		},
+	});
+
 	const PrismHighlight = Extension.create({
 		name: 'prismHighlight',
 		addProseMirrorPlugins() {
@@ -451,7 +614,7 @@ function initEditor() {
 			TaskList,
 			TaskItem.configure({ nested: true }),
 			Link.configure({ openOnClick: false }),
-			Image,
+			ImageWithBase,
 			Table.configure({ resizable: true }),
 			TableRow,
 			TableHeader,
@@ -545,6 +708,22 @@ window.addEventListener('message', (event) => {
 				root.style.setProperty('--typedown-theme-table-border', sidebarForeground);
 				root.style.setProperty('--typedown-theme-active-border', sidebarForeground);
 			}
+			break;
+		}
+		case 'baseUriChanged': {
+			if (typeof message.baseUri === 'string') {
+				imageBaseUri = message.baseUri;
+				updateImageSources();
+			}
+			break;
+		}
+		case 'insertImageMarkdown': {
+			if (!editor || !message.text) {
+				return;
+			}
+			const markdown = `\n\n${message.text}\n\n`;
+			editor.chain().focus().insertContent(markdown, { contentType: 'markdown' }).run();
+			requestAnimationFrame(() => updateImageSources());
 			break;
 		}
 		case 'prismThemeChanged': {

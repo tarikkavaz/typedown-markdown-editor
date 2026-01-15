@@ -67,7 +67,11 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		_token: vscode.CancellationToken
 	): Promise<void> {
 		// Setup initial webview HTML and settings
-		webviewPanel.webview.options = { enableScripts: true };
+		const documentFolderUri = vscode.Uri.file(path.dirname(document.uri.fsPath));
+		webviewPanel.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [this.context.extensionUri, documentFolderUri],
+		};
 		const sidebarForegroundColor = this.getSideBarForegroundColor();
 		webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, sidebarForegroundColor);
 		
@@ -117,6 +121,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		webviewPanel.webview.postMessage({ 
 			type: 'documentChanged', 
 			text: normalizedInitialText 
+		});
+
+		const baseFolderUri = vscode.Uri.file(path.dirname(document.uri.fsPath) + path.sep);
+		const baseWebviewUri = webviewPanel.webview.asWebviewUri(baseFolderUri).toString();
+		webviewPanel.webview.postMessage({
+			type: 'baseUriChanged',
+			baseUri: baseWebviewUri,
 		});
 
 		// Initial scroll sync
@@ -264,7 +275,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		});
 
 		// Receive message from the webview.
-		webviewPanel.webview.onDidReceiveMessage((e) => {
+		webviewPanel.webview.onDidReceiveMessage(async (e) => {
 			console.log('onDidReceiveMessage: ', [JSON.stringify(e)]);
 			switch (e.type) {
 				case 'webviewChanged':
@@ -273,11 +284,60 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					this.updateTextDocument(document, e.text, isUpdatingFromWebview);
 					return;
 				case 'initialized':
-					// Content was already sent immediately when HTML loaded, so no need to send again
-					// updateWebview() would send duplicate content
+					webviewPanel.webview.postMessage({
+						type: 'baseUriChanged',
+						baseUri: baseWebviewUri,
+					});
 					return;
 				case 'plainPaste':
 					vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+					return;
+				case 'requestImageInsert': {
+					const altText = await vscode.window.showInputBox({
+						prompt: 'Image alt text',
+						value: 'Image',
+					});
+					if (altText === undefined) {
+						return;
+					}
+					const docDir = path.dirname(document.uri.fsPath);
+					const selection = await vscode.window.showOpenDialog({
+						canSelectFiles: true,
+						canSelectFolders: false,
+						canSelectMany: false,
+						filters: {
+							Images: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'],
+						},
+					});
+
+					if (!selection || selection.length === 0) {
+						return;
+					}
+
+					const sourcePath = selection[0].fsPath;
+					const baseName = path.basename(sourcePath);
+					let targetPath = path.join(docDir, baseName);
+
+					if (path.resolve(sourcePath) !== path.resolve(targetPath)) {
+						if (fs.existsSync(targetPath)) {
+							const ext = path.extname(baseName);
+							const name = path.basename(baseName, ext);
+							let counter = 1;
+							while (fs.existsSync(targetPath)) {
+								targetPath = path.join(docDir, `${name}-${counter}${ext}`);
+								counter += 1;
+							}
+						}
+						fs.copyFileSync(sourcePath, targetPath);
+					}
+
+					const relativePath = path.relative(docDir, targetPath).replace(/\\/g, '/');
+					webviewPanel.webview.postMessage({
+						type: 'insertImageMarkdown',
+						text: `![${altText || 'Image'}](${relativePath})`,
+					});
+					return;
+				}
 			}
 		});
 	}
@@ -319,7 +379,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		return html/* html */ `<!DOCTYPE html>
 			<html lang="en">
 				<head>
-					<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}' ${cspSource}; style-src 'unsafe-inline' ${cspSource};" />
+					<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}' ${cspSource}; style-src 'unsafe-inline' ${cspSource}; img-src ${cspSource} data: file: vscode-file: vscode-resource:;" />
 
 					<meta charset="UTF-8" />
 					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -476,6 +536,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							background: transparent !important;
 						}
 						
+						.ProseMirror img {
+							max-width: 100%;
+							height: auto;
+							display: block;
+							margin: 8px 0;
+							border-radius: 4px;
+						}
+						
 						.ProseMirror blockquote {
 							border-left: 3px solid var(--typedown-theme-separator);
 							padding-left: 12px;
@@ -600,6 +668,78 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.typedown-toolbar button[data-tooltip]:hover::after,
 						.typedown-toolbar button[data-tooltip]:focus::after {
 							opacity: 1;
+						}
+						
+						.typedown-dialog-overlay {
+							position: fixed;
+							inset: 0;
+							background-color: rgba(0, 0, 0, 0.35);
+							display: flex;
+							align-items: center;
+							justify-content: center;
+							opacity: 0;
+							pointer-events: none;
+							transition: opacity 0.2s ease-in-out;
+							z-index: 1100;
+						}
+						
+						.typedown-dialog-overlay.is-visible {
+							opacity: 1;
+							pointer-events: auto;
+						}
+						
+						.typedown-dialog {
+							min-width: 320px;
+							max-width: 420px;
+							background-color: var(--vscode-editor-background);
+							border: 1px solid var(--typedown-theme-table-border);
+							border-radius: 6px;
+							padding: 16px;
+							box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+							color: var(--vscode-editor-foreground);
+						}
+						
+						.typedown-dialog-title {
+							font-size: 14px;
+							font-weight: 600;
+							margin-bottom: 12px;
+						}
+						
+						.typedown-dialog-field {
+							display: flex;
+							flex-direction: column;
+							gap: 6px;
+							margin-bottom: 12px;
+							font-size: 12px;
+							color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
+						}
+						
+						.typedown-dialog-field input {
+							background-color: var(--typedown-theme-input-bg, var(--vscode-input-background));
+							color: var(--typedown-theme-input-fg, var(--vscode-input-foreground));
+							border: 1px solid var(--typedown-theme-input-border, var(--vscode-input-border));
+							border-radius: 4px;
+							padding: 6px 8px;
+						}
+						
+						.typedown-dialog-actions {
+							display: flex;
+							justify-content: flex-end;
+							gap: 8px;
+						}
+						
+						.typedown-dialog-actions button {
+							padding: 4px 10px;
+							border-radius: 4px;
+							border: 1px solid var(--typedown-theme-input-border, var(--vscode-input-border));
+							background-color: var(--vscode-button-background);
+							color: var(--vscode-button-foreground);
+							cursor: pointer;
+						}
+						
+						.typedown-dialog-actions button[data-dialog-cancel] {
+							background-color: transparent;
+							color: var(--vscode-editor-foreground);
 						}
 						
 						.typedown-toolbar button:hover,
