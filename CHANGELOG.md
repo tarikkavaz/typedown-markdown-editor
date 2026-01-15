@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 ## [1.0.0] - Initial Release
 
 ### Added
-- WYSIWYG markdown editor powered by CKEditor5
+- WYSIWYG markdown editor powered by Tiptap
 - Context menu integration in file explorer
 - Command palette support
 - Seamless switching between WYSIWYG and default editor modes
@@ -46,3 +46,17 @@ All notable changes to this project will be documented in this file.
 - Dropdown menu visibility - options are now properly displayed
 - Dropdown menu scrolling - all options are accessible even in long lists
 - Table markdown conversion - tables now output correct markdown syntax with separator rows
+
+## [1.1.0] - 2025-01-15
+
+### Changed
+- Migrated from CKEditor to Tiptap for better performance and smaller bundle size
+
+### Added
+- Image insertion dialog with file picker
+- Link editing dialog for inserting and editing links
+- PrismJS syntax highlighting for code blocks (16 languages supported)
+- Task list support with checkboxes
+- Custom Prism theme path configuration (`typedown.editor.prismThemePath`)
+- Code block font family configuration (`typedown.editor.codeBlockfontFamily`)
+- Editor width configuration (`typedown.editor.width`)

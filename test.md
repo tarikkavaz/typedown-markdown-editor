@@ -134,7 +134,7 @@ done
   "name": "typedown-markdown-editor",
   "version": "1.0.0",
   "dependencies": {
-    "ckeditor5": "^40.0.0"
+    "@tiptap/core": "^3.15.0"
   }
 }
 ```

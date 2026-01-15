@@ -1,14 +1,16 @@
 # Typedown - Markdown WYSIWYG Editor
 
-A powerful WYSIWYG (What You See Is What You Get) editor for Markdown files in VS Code and Cursor. Edit your Markdown files with a visual, rich-text interface powered by CKEditor.
+A powerful WYSIWYG (What You See Is What You Get) editor for Markdown files in VS Code and Cursor. Edit your Markdown files with a visual, rich-text interface powered by Tiptap.
 
 ## Features
 
 - **WYSIWYG Editing**: Edit Markdown files with a visual, rich-text editor
+- **Syntax Highlighting**: PrismJS-powered code block highlighting for 16+ languages
 - **Context Menu Access**: Right-click on `.md` files in the explorer to open in WYSIWYG mode
 - **Cross-Platform**: Works on Windows, macOS, and Linux
-- **Full Markdown Support**: All standard markdown features including tables, images, code blocks, links, and more
+- **Full Markdown Support**: All standard markdown features including tables, images, code blocks, links, task lists, and more
 - **Seamless Integration**: Switch between WYSIWYG and plain text modes easily
+- **Fast Loading**: Optimized bundle for instant editor initialization
 
 ## Table of Contents
 
@@ -16,11 +18,8 @@ A powerful WYSIWYG (What You See Is What You Get) editor for Markdown files in V
 - [Usage](#usage)
   - [Opening Files in WYSIWYG Mode](#opening-files-in-wysiwyg-mode)
   - [Command Palette](#command-palette)
+- [Configuration](#configuration)
 - [Requirements](#requirements)
-- [Development](#development)
-  - [Building](#building)
-  - [Watch Mode](#watch-mode)
-  - [Packaging](#packaging)
 - [Troubleshooting](#troubleshooting)
 - [FAQ](#faq)
 - [Known Issues](#known-issues)
@@ -87,7 +86,7 @@ Opens the active markdown file in WYSIWYG mode, or switches back to the default 
 
 ## Configuration
 
-You can customize the font family and font size for the markdown editor. If not specified, the editor will use VS Code's `editor.fontFamily` and `editor.fontSize` settings.
+You can customize the editor appearance and behavior through VS Code settings.
 
 ### Font Family
 
@@ -121,6 +120,38 @@ Set a custom font size for the markdown editor:
 
 If not set, the editor will use VS Code's `editor.fontSize` setting (default: 14).
 
+### Code Block Font Family
+
+Set a custom font family for code blocks:
+
+```json
+{
+  "typedown.editor.codeBlockfontFamily": "'Fira Code', monospace"
+}
+```
+
+### Editor Width
+
+Set the maximum width of the editor content area:
+
+```json
+{
+  "typedown.editor.width": "120ch"
+}
+```
+
+Default is `91ch`. Accepts any valid CSS width value (e.g., `800px`, `100%`).
+
+### Custom Prism Theme
+
+Use a custom PrismJS theme for syntax highlighting:
+
+```json
+{
+  "typedown.editor.prismThemePath": "/path/to/custom-prism-theme.css"
+}
+```
+
 ### Example Configuration
 
 Here's a complete example configuration:
@@ -128,11 +159,13 @@ Here's a complete example configuration:
 ```json
 {
   "typedown.editor.fontFamily": "'Fira Code', monospace",
-  "typedown.editor.fontSize": 16
+  "typedown.editor.fontSize": 16,
+  "typedown.editor.codeBlockfontFamily": "'JetBrains Mono', monospace",
+  "typedown.editor.width": "100ch"
 }
 ```
 
-**Note**: Changes to these settings will be applied immediately when you open or switch to a markdown file in WYSIWYG mode. The settings also update dynamically when VS Code's editor font settings change.
+**Note**: Changes to these settings will be applied immediately when you open or switch to a markdown file in WYSIWYG mode.
 
 ## Requirements
 
@@ -182,15 +215,21 @@ Yes! The extension works with any file that has a `.md` extension. It automatica
 
 ### Does the extension support all Markdown features?
 
-The extension uses CKEditor and supports standard Markdown features including:
-- Headings
-- Bold and italic text
-- Lists (ordered and unordered)
+The extension uses Tiptap and supports standard Markdown features including:
+- Headings (H1-H6)
+- Bold, italic, and strikethrough text
+- Lists (ordered, unordered, and task lists)
 - Links
 - Images
-- Code blocks
+- Code blocks with syntax highlighting
 - Tables
 - Blockquotes
+- Horizontal rules
+
+### What programming languages are supported for syntax highlighting?
+
+The editor includes syntax highlighting for:
+JavaScript, TypeScript, JSX, TSX, Python, Java, C, C++, Go, Rust, HTML, CSS, JSON, YAML, SQL, Bash/Shell, Markdown, and Diff.
 
 ### Does the extension work with unsaved files?
 
@@ -199,7 +238,6 @@ The extension works best with saved files. For unsaved files, you may need to sa
 ## Known Issues
 
 - The extension requires files to be saved to disk for best compatibility
-- Some advanced Markdown features may not be fully supported depending on CKEditor's capabilities
 - Large Markdown files may experience performance issues in WYSIWYG mode
 
 ## Contributing
@@ -216,10 +254,11 @@ Contributions are welcome! Here's how you can help:
 ### Development Setup
 
 1. Clone the repository
-2. Install dependencies: `npm install`
-3. Open the folder in VS Code
-4. Press `F5` to open a new Extension Development Host window
-5. Make changes and test in the development window
+2. Install dependencies: `pnpm install`
+3. Build the editor bundle: `pnpm run build:editor`
+4. Open the folder in VS Code
+5. Press `F5` to open a new Extension Development Host window
+6. Make changes and test in the development window
 
 ### Reporting Bugs
 

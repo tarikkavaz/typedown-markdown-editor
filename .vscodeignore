@@ -13,7 +13,6 @@ dist/vendors-*.js
 dist/vendors-*.js.map
 dist/node_modules-*.js
 dist/node_modules-*.js.map
-ckeditor5-build-markdown/**
 **/*.worker.js
 **/*.worker.js.map
 src/tiptap-bundle.js

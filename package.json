@@ -2,7 +2,7 @@
 	"name": "typedown-markdown-editor",
 	"displayName": "Typedown - Markdown WYSIWYG Editor",
 	"description": "Markdown editor with WYSIWYG mode",
-	"version": "1.0.2",
+	"version": "1.1.0",
 	"publisher": "tarikkavaz",
 	"repository": {
 		"type": "git",
