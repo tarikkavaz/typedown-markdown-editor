@@ -1,258 +1,777 @@
 //@ts-check
 
-// Get a reference to the VS Code webview api.
-// We use this API to post messages back to our extension.
-
-// This was defined in markdownEditor.ts in the HTML snippet initializing CKEditor5. This line just stops IDE complaining.
-const editor = window.editor;
-
-// This will store the latest saved data from VS Code
-editor.savedData = null;
-
-editor.suppressNextDataChangeEvent = false;
-
 // eslint-disable-next-line no-undef
 const vscode = acquireVsCodeApi();
 window.vscode = vscode;
 
-// We use this to track whether the document's initial content has been set yet
-var initializedFlag = false;
+let editor = null;
+let initializedFlag = false;
+let pendingContent = null;
+let suppressNextChangeEvent = false;
+let lastMarkdown = '';
+let imageBaseUri = typeof window !== 'undefined' && window.__typedownBaseUri ? window.__typedownBaseUri : '';
+let linkDialog = null;
 
-/**
- * Render the document in the webview.
- */
-function setEditorContent(/** @type {string} */ text) {
-	console.log('setEditorContent', { initializedFlag, text: JSON.stringify(text) });
+function getTiptapBundle() {
+	return (typeof window !== 'undefined' && window.tiptap) ||
+		(typeof self !== 'undefined' && self.tiptap) ||
+		(typeof globalThis !== 'undefined' && globalThis.tiptap) ||
+		null;
+}
 
-	// We use setData instead of editor.model.change for initial content otherwise undo history starts with empty content
-	if (!initializedFlag) {
-		editor.setData(text);
-		initializedFlag = true;
+function resolveImageSrc(src) {
+	if (!src) {
+		return src;
+	}
+
+	const lower = src.toLowerCase();
+	if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('data:') || lower.startsWith('vscode-resource:') || lower.startsWith('vscode-file:')) {
+		return src;
+	}
+
+	if (!imageBaseUri) {
+		return src;
+	}
+
+	try {
+		return new URL(src, imageBaseUri).toString();
+	} catch (error) {
+		return src;
+	}
+}
+
+function updateImageSources() {
+	if (!editor) {
 		return;
 	}
 
-	// If the new text doesn't match the editor's current text, we need to update it but preserve the selection.
-	if (editor.getData() != text) {
-		// Save selection so we can restore it after replacing the content
-		const userSelection = editor.model.document.selection.getFirstRange();
+	const root = editor.view?.dom;
+	if (!root) {
+		return;
+	}
 
-		// Use setData to replace content - this will properly parse markdown tables
-		// setData automatically handles markdown parsing and conversion to HTML for display
-		editor.setData(text);
+	root.querySelectorAll('img').forEach((img) => {
+		const current = img.getAttribute('src') || '';
+		const resolved = resolveImageSrc(current);
+		if (resolved && resolved !== img.src) {
+			img.src = resolved;
+		}
+	});
+}
 
-		editor.model.change((writer) => {
-			try {
-				writer.setSelection(userSelection);
-			} catch {
-				// Backup selection to use if userSelection became invalid after replacing content
-				// Usually userSelection should only become invalid if the document got shorter (its now out of bounds)
-				// so in that case we should put the cursor at the end of the last line in the document
-				let lastElement = editor.model.document
-					.getRoot()
-					.getChild(editor.model.document.getRoot().childCount - 1);
-				editor.model.change((writer) => {
-					writer.setSelection(lastElement, 'after');
-				});
+function setupImageObserver() {
+	if (!editor) {
+		return;
+	}
+
+	const root = editor.view?.dom;
+	if (!root) {
+		return;
+	}
+
+	const observer = new MutationObserver(() => {
+		updateImageSources();
+	});
+
+	observer.observe(root, {
+		childList: true,
+		subtree: true,
+	});
+
+}
+
+function forceImageRerender() {
+	if (!editor) {
+		return;
+	}
+
+	const root = editor.view?.dom;
+	if (!root) {
+		return;
+	}
+
+	root.querySelectorAll('img').forEach((img) => {
+		const current = img.getAttribute('src') || '';
+		const resolved = resolveImageSrc(current);
+		if (resolved) {
+			img.src = '';
+			requestAnimationFrame(() => {
+				img.src = resolved;
+			});
+		}
+	});
+}
+
+function normalizeMarkdownImages(markdown) {
+	if (!markdown) {
+		return markdown;
+	}
+	// Ensure images are on their own line with a blank line after.
+	let normalized = markdown;
+	normalized = normalized.replace(/(!\[[^\]]*\]\([^)]+\))(?!\r?\n)/g, '$1\n\n');
+	normalized = normalized.replace(/(!\[[^\]]*\]\([^)]+\))\r?\n(?!\r?\n)/g, '$1\n\n');
+	return normalized;
+}
+
+function createPrismDecorations(doc, prismInstance) {
+	const { Decoration, DecorationSet } = window.tiptap;
+	const decorations = [];
+
+	const tokenize = (tokens, startPos, offset, types) => {
+		tokens.forEach((token) => {
+			if (typeof token === 'string') {
+				offset.value += token.length;
+				return;
 			}
+
+			const alias = token.alias
+				? Array.isArray(token.alias)
+					? token.alias
+					: [token.alias]
+				: [];
+			const nextTypes = [...types, token.type, ...alias];
+
+			if (typeof token.content === 'string') {
+				const from = startPos + offset.value;
+				const to = from + token.content.length;
+				const className = `token ${nextTypes.join(' ')}`;
+				if (from < to) {
+					decorations.push(Decoration.inline(from, to, { class: className }));
+				}
+				offset.value += token.content.length;
+				return;
+			}
+
+			const nested = Array.isArray(token.content) ? token.content : [token.content];
+			tokenize(nested.filter(Boolean), startPos, offset, nextTypes);
 		});
-	}
+	};
 
-	// Keep track of this to check if document is really dirty in change:data event
-	editor.savedData = editor.getData();
+	doc.descendants((node, pos) => {
+		if (node.type.name !== 'codeBlock') {
+			return;
+		}
+
+		const language = node.attrs.language || '';
+		const grammar = prismInstance.languages[language] || prismInstance.languages.markup;
+		if (!grammar) {
+			return;
+		}
+
+		const text = node.textContent;
+		if (!text) {
+			return;
+		}
+
+		const tokens = prismInstance.tokenize(text, grammar);
+		const offset = { value: 0 };
+		tokenize(tokens, pos + 1, offset, []);
+	});
+
+	return DecorationSet.create(doc, decorations);
 }
 
-// Helper function to convert HTML table to markdown table
-function htmlTableToMarkdown(html) {
-	// Check if the HTML contains a table
-	if (!html || !html.includes('<table')) {
-		return html;
-	}
-	
-	// Use regex to find and replace HTML tables with markdown
-	// This approach works better than DOM parsing for mixed HTML/markdown content
-	const tableRegex = /<table[^>]*>([\s\S]*?)<\/table>/gi;
-	
-	return html.replace(tableRegex, (match, tableContent) => {
-		// Create a temporary DOM element to parse just the table
-		const tempDiv = document.createElement('div');
-		tempDiv.innerHTML = match;
-		
-		const table = tempDiv.querySelector('table');
-		if (!table) {
-			return match; // Return original if parsing fails
-		}
-		
-		return convertTableToMarkdown(table);
-	});
-}
-
-// Convert a single HTML table element to markdown
-function convertTableToMarkdown(table) {
-	const rows = [];
-	const tbody = table.querySelector('tbody') || table;
-	const trElements = tbody.querySelectorAll('tr');
-	
-	if (trElements.length === 0) {
-		return '';
-	}
-	
-	// First pass: determine the maximum number of columns
-	let maxColumns = 0;
-	trElements.forEach((tr) => {
-		const cellCount = tr.querySelectorAll('td, th').length;
-		if (cellCount > maxColumns) {
-			maxColumns = cellCount;
-		}
-	});
-	
-	// If no columns found, return empty
-	if (maxColumns === 0) {
-		return '';
-	}
-	
-	let separatorAdded = false;
-	
-	trElements.forEach((tr, rowIndex) => {
-		const cells = [];
-		const tdElements = tr.querySelectorAll('td, th');
-		
-		// Check if this is a header row (has th elements or is the first row in a table with thead)
-		const isHeaderRow = tr.querySelector('th') !== null || 
-		                    (rowIndex === 0 && table.querySelector('thead') !== null) ||
-		                    (rowIndex === 0 && tr.parentElement.tagName === 'THEAD');
-		
-		// Process all cells, ensuring we have maxColumns cells
-		for (let i = 0; i < maxColumns; i++) {
-			const cell = tdElements[i];
-			let cellText = '';
-			
-			if (cell) {
-				// Get cell text content, handling &nbsp; and other HTML entities
-				cellText = cell.textContent || cell.innerText || '';
-				// Decode HTML entities by creating a temporary element
-				const tempDiv2 = document.createElement('div');
-				tempDiv2.innerHTML = cellText;
-				cellText = tempDiv2.textContent || tempDiv2.innerText || '';
-				cellText = cellText.trim();
-				// Replace multiple spaces with single space
-				cellText = cellText.replace(/\s+/g, ' ');
-				// Escape pipe characters in cell content
-				cellText = cellText.replace(/\|/g, '\\|');
-			}
-			// If cell is empty or doesn't exist, use empty string (not space)
-			cells.push(cellText || '');
-		}
-		
-		if (cells.length > 0) {
-			// Build the markdown row with proper spacing
-			rows.push('| ' + cells.join(' | ') + ' |');
-			
-			// Always add separator row after the first row (treat first row as header)
-			// This ensures valid markdown table syntax
-			if (rowIndex === 0 && !separatorAdded) {
-				const separator = cells.map(() => '---').join(' | ');
-				rows.push('| ' + separator + ' |');
-				separatorAdded = true;
-			}
-		}
-	});
-	
-	return '\n' + rows.join('\n') + '\n';
-}
-
-// Add listener for user modifying text in the editor
-editor.model.document.on('change:data', (e) => {
-	// This happens when the even was triggered by documentChanged event rather than user input
-	if (editor.suppressNextDataChangeEvent) {
-		editor.suppressNextDataChangeEvent = false;
+function setEditorContent(text) {
+	if (!editor) {
 		return;
 	}
 
-	let data = editor.getData();
-	
-	// CKEditor markdown build should automatically convert HTML tables to markdown
-	// But if it doesn't, we'll convert them manually
-	// Check if data contains HTML tables that weren't converted
-	if (data.includes('<table')) {
-		data = htmlTableToMarkdown(data);
+	suppressNextChangeEvent = true;
+	editor.commands.setContent(text, { contentType: 'markdown', emitUpdate: false });
+	suppressNextChangeEvent = false;
+	lastMarkdown = text;
+	initializedFlag = true;
+	requestAnimationFrame(() => updateImageSources());
+}
+
+function updateToolbarPosition(toolbar) {
+	const editorContainer = document.querySelector('#editor');
+	if (!toolbar || !editorContainer) {
+		return;
 	}
-	
-	vscode.postMessage({
-		type: 'webviewChanged',
-		text: data,
+
+	const editorRect = editorContainer.getBoundingClientRect();
+	toolbar.style.width = `${editorRect.width}px`;
+	toolbar.style.left = `${editorRect.left}px`;
+}
+
+function buildToolbar() {
+	const toolbar = document.querySelector('#toolbar');
+	if (!toolbar || !editor) {
+		return;
+	}
+
+	toolbar.innerHTML = '';
+
+	const headingSelect = document.createElement('select');
+	headingSelect.dataset.action = 'heading';
+	[
+		{ label: 'P', level: 0 },
+		{ label: 'H1', level: 1 },
+		{ label: 'H2', level: 2 },
+		{ label: 'H3', level: 3 },
+		{ label: 'H4', level: 4 },
+		{ label: 'H5', level: 5 },
+		{ label: 'H6', level: 6 },
+	].forEach((option) => {
+		const element = document.createElement('option');
+		element.value = String(option.level);
+		element.textContent = option.label;
+		headingSelect.appendChild(element);
 	});
 
-	editor.dirty = true;
-});
+	headingSelect.addEventListener('change', () => {
+		const level = Number(headingSelect.value);
+		if (level === 0) {
+			editor.chain().focus().setParagraph().run();
+		} else {
+			editor.chain().focus().toggleHeading({ level }).run();
+		}
+	});
 
-// Handle messages sent from the extension to the webview
+	toolbar.appendChild(headingSelect);
+
+	const iconMap = {
+		hr: '<svg viewBox="0 0 24 24" aria-hidden="true"><line x1="4" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+		ul: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="7" r="1.5" fill="currentColor"/><circle cx="6" cy="12" r="1.5" fill="currentColor"/><circle cx="6" cy="17" r="1.5" fill="currentColor"/><line x1="10" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="10" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="10" y1="17" x2="20" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+		ol: '<svg viewBox="0 0 24 24" aria-hidden="true"><text x="4" y="9" font-size="7" fill="currentColor" font-family="monospace">1</text><text x="4" y="14" font-size="7" fill="currentColor" font-family="monospace">2</text><text x="4" y="19" font-size="7" fill="currentColor" font-family="monospace">3</text><line x1="10" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="10" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="10" y1="17" x2="20" y2="17" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+		task: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="6" height="6" rx="1" ry="1" stroke="currentColor" stroke-width="2" fill="none"/><polyline points="5,16 7.5,18.5 11,14.5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><line x1="14" y1="8" x2="20" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="14" y1="16" x2="20" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+		indent: '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="6,8 10,12 6,16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="8" x2="20" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="16" x2="20" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+		outdent: '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="10,8 6,12 10,16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="8" x2="20" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="16" x2="20" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+		table: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1" ry="1" stroke="currentColor" stroke-width="2" fill="none"/><line x1="4" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/><line x1="10" y1="5" x2="10" y2="19" stroke="currentColor" stroke-width="2"/><line x1="16" y1="5" x2="16" y2="19" stroke="currentColor" stroke-width="2"/></svg>',
+		image: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="9" cy="10" r="2" fill="currentColor"/><polyline points="4,17 10,12 14,15 20,11 20,19 4,19" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>',
+		link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12a4 4 0 0 1 4-4h3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M15 12a4 4 0 0 1-4 4H8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M7 12a5 5 0 0 1 5-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M17 12a5 5 0 0 1-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
+	};
+
+	const buttons = [
+		{ action: 'bold', label: 'B', title: 'Bold' },
+		{ action: 'italic', label: 'I', title: 'Italic' },
+		{ action: 'strike', label: 'S', title: 'Strike' },
+		{ action: 'hr', label: 'HR', title: 'Horizontal Rule', icon: iconMap.hr },
+		{ action: 'quote', label: '""', title: 'Blockquote' },
+		{ action: 'ul', label: 'UL', title: 'Bullet List', icon: iconMap.ul },
+		{ action: 'ol', label: 'OL', title: 'Ordered List', icon: iconMap.ol },
+		{ action: 'task', label: 'Task', title: 'Task List', icon: iconMap.task },
+		{ action: 'indent', label: '>>', title: 'Indent', icon: iconMap.indent },
+		{ action: 'outdent', label: '<<', title: 'Outdent', icon: iconMap.outdent },
+		{ action: 'table', label: 'Table', title: 'Insert Table', icon: iconMap.table },
+		{ action: 'image', label: 'Image', title: 'Insert Image', icon: iconMap.image },
+		{ action: 'link', label: 'Link', title: 'Insert Link', icon: iconMap.link },
+		{ action: 'code', label: '{}', title: 'Inline Code' },
+		{ action: 'codeblock', label: '</>', title: 'Code Block' },
+	];
+
+	buttons.forEach((item) => {
+		const button = document.createElement('button');
+		button.type = 'button';
+		button.dataset.action = item.action;
+		if (item.icon) {
+			button.innerHTML = item.icon;
+			button.setAttribute('aria-label', item.title);
+		} else {
+			button.textContent = item.label;
+		}
+		button.title = item.title;
+		button.setAttribute('data-tooltip', item.title);
+		button.addEventListener('click', () => handleToolbarAction(item.action, button));
+		toolbar.appendChild(button);
+	});
+
+	updateToolbarPosition(toolbar);
+	document.body.classList.add('has-fixed-toolbar');
+
+	window.addEventListener('resize', () => updateToolbarPosition(toolbar), { passive: true });
+	window.addEventListener('scroll', () => updateToolbarPosition(toolbar), { passive: true });
+
+	updateToolbarActiveStates();
+}
+
+function ensureLinkDialog() {
+	if (linkDialog) {
+		return linkDialog;
+	}
+
+	const overlay = document.createElement('div');
+	overlay.className = 'typedown-dialog-overlay';
+
+	const dialog = document.createElement('div');
+	dialog.className = 'typedown-dialog';
+	dialog.innerHTML = `
+		<div class="typedown-dialog-title">Edit link</div>
+		<label class="typedown-dialog-field">
+			<span>Text</span>
+			<input type="text" data-link-text />
+		</label>
+		<label class="typedown-dialog-field">
+			<span>URL</span>
+			<input type="text" data-link-url />
+		</label>
+		<div class="typedown-dialog-actions">
+			<button type="button" data-dialog-cancel>Cancel</button>
+			<button type="button" data-dialog-confirm>Save</button>
+		</div>
+	`;
+
+	overlay.appendChild(dialog);
+	document.body.appendChild(overlay);
+
+	linkDialog = {
+		overlay,
+		dialog,
+		textInput: dialog.querySelector('input[data-link-text]'),
+		urlInput: dialog.querySelector('input[data-link-url]'),
+		confirmButton: dialog.querySelector('button[data-dialog-confirm]'),
+		cancelButton: dialog.querySelector('button[data-dialog-cancel]'),
+	};
+
+	linkDialog.cancelButton.addEventListener('click', () => {
+		overlay.classList.remove('is-visible');
+	});
+
+	overlay.addEventListener('click', (event) => {
+		if (event.target === overlay) {
+			overlay.classList.remove('is-visible');
+		}
+	});
+
+	return linkDialog;
+}
+
+function promptForImage() {
+	vscode.postMessage({
+		type: 'requestImageInsert',
+	});
+}
+
+function openLinkDialog({ text, url, onConfirm }) {
+	const dialog = ensureLinkDialog();
+	dialog.textInput.value = text || '';
+	dialog.urlInput.value = url || '';
+	dialog.overlay.classList.add('is-visible');
+
+	requestAnimationFrame(() => {
+		if (dialog.urlInput.value) {
+			dialog.urlInput.focus();
+			dialog.urlInput.select();
+		} else {
+			dialog.textInput.focus();
+		}
+	});
+
+	const handleConfirm = () => {
+		const nextText = dialog.textInput.value.trim();
+		const nextUrl = dialog.urlInput.value.trim();
+		dialog.overlay.classList.remove('is-visible');
+		onConfirm(nextText, nextUrl);
+	};
+
+	const handleKeydown = (event) => {
+		if (event.key === 'Escape') {
+			dialog.overlay.classList.remove('is-visible');
+		}
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			handleConfirm();
+		}
+	};
+
+	dialog.confirmButton.onclick = handleConfirm;
+	dialog.textInput.onkeydown = handleKeydown;
+	dialog.urlInput.onkeydown = handleKeydown;
+}
+
+function handleToolbarAction(action, button) {
+	if (!editor) {
+		return;
+	}
+
+	switch (action) {
+		case 'bold':
+			editor.chain().focus().toggleBold().run();
+			break;
+		case 'italic':
+			editor.chain().focus().toggleItalic().run();
+			break;
+		case 'strike':
+			editor.chain().focus().toggleStrike().run();
+			break;
+		case 'hr':
+			editor.chain().focus().setHorizontalRule().run();
+			break;
+		case 'quote':
+			editor.chain().focus().toggleBlockquote().run();
+			break;
+		case 'ul':
+			editor.chain().focus().toggleBulletList().run();
+			break;
+		case 'ol':
+			editor.chain().focus().toggleOrderedList().run();
+			break;
+		case 'task':
+			editor.chain().focus().toggleTaskList().run();
+			break;
+		case 'indent': {
+			const sunkTask = editor.chain().focus().sinkListItem('taskItem').run();
+			if (!sunkTask) {
+				editor.chain().focus().sinkListItem('listItem').run();
+			}
+			break;
+		}
+		case 'outdent': {
+			const liftedTask = editor.chain().focus().liftListItem('taskItem').run();
+			if (!liftedTask) {
+				editor.chain().focus().liftListItem('listItem').run();
+			}
+			break;
+		}
+		case 'table':
+			editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+			break;
+		case 'image': {
+			promptForImage();
+			break;
+		}
+		case 'link': {
+			const { from, to, empty } = editor.state.selection;
+			const existingUrl = editor.getAttributes('link').href || '';
+			let linkText = '';
+
+			if (!empty) {
+				linkText = editor.state.doc.textBetween(from, to, ' ');
+			}
+
+			const initialText = linkText || existingUrl || '';
+			const initialUrl = existingUrl || linkText || '';
+
+			openLinkDialog({
+				text: initialText,
+				url: initialUrl,
+				onConfirm: (nextText, nextUrl) => {
+					if (!nextUrl) {
+						editor.chain().focus().unsetLink().run();
+						return;
+					}
+
+					if (empty || !linkText) {
+						const insertText = nextText || nextUrl;
+						editor.chain().focus().insertContent({
+							type: 'text',
+							text: insertText,
+							marks: [{ type: 'link', attrs: { href: nextUrl } }],
+						}).run();
+					} else {
+						editor.chain().focus().extendMarkRange('link').setLink({ href: nextUrl }).run();
+					}
+				},
+			});
+			break;
+		}
+		case 'code':
+			editor.chain().focus().toggleCode().run();
+			break;
+		case 'codeblock':
+			editor.chain().focus().toggleCodeBlock().run();
+			break;
+	}
+
+	updateToolbarActiveStates();
+}
+
+function updateToolbarActiveStates() {
+	if (!editor) {
+		return;
+	}
+
+	const toolbar = document.querySelector('#toolbar');
+	if (!toolbar) {
+		return;
+	}
+
+	toolbar.querySelectorAll('button[data-action]').forEach((button) => {
+		const action = button.dataset.action;
+		let isActive = false;
+
+		switch (action) {
+			case 'bold':
+				isActive = editor.isActive('bold');
+				break;
+			case 'italic':
+				isActive = editor.isActive('italic');
+				break;
+			case 'strike':
+				isActive = editor.isActive('strike');
+				break;
+			case 'quote':
+				isActive = editor.isActive('blockquote');
+				break;
+			case 'ul':
+				isActive = editor.isActive('bulletList');
+				break;
+			case 'ol':
+				isActive = editor.isActive('orderedList');
+				break;
+			case 'task':
+				isActive = editor.isActive('taskList');
+				break;
+			case 'code':
+				isActive = editor.isActive('code');
+				break;
+			case 'codeblock':
+				isActive = editor.isActive('codeBlock');
+				break;
+		}
+
+		button.classList.toggle('active', isActive);
+	});
+
+	const headingSelect = toolbar.querySelector('select[data-action="heading"]');
+	if (headingSelect) {
+		const heading = [1, 2, 3, 4, 5, 6].find((level) => editor.isActive('heading', { level }));
+		headingSelect.value = heading ? String(heading) : '0';
+	}
+}
+
+function setupEditorHandlers() {
+	if (!editor) {
+		return;
+	}
+
+	editor.on('update', () => {
+		if (suppressNextChangeEvent) {
+			suppressNextChangeEvent = false;
+			return;
+		}
+
+		const rawMarkdown = editor.storage?.markdown?.getMarkdown
+			? editor.storage.markdown.getMarkdown()
+			: editor.getText();
+		const markdown = normalizeMarkdownImages(rawMarkdown.replace(/\\\n/g, '\n'));
+
+		lastMarkdown = markdown;
+		vscode.postMessage({ type: 'webviewChanged', text: markdown });
+		updateToolbarActiveStates();
+		requestAnimationFrame(() => updateImageSources());
+	});
+
+	editor.on('selectionUpdate', () => {
+		updateToolbarActiveStates();
+	});
+}
+
+function initEditor() {
+	if (window.__typedownEditorInitialized) {
+		return;
+	}
+
+	const tiptap = getTiptapBundle();
+	if (!tiptap || !tiptap.Editor) {
+		console.error('Failed to initialize Tiptap editor: bundle not available.');
+		return;
+	}
+
+	window.__typedownEditorInitialized = true;
+
+	const {
+		Editor,
+		StarterKit,
+		CodeBlock,
+		mergeAttributes,
+		Markdown,
+		TaskList,
+		TaskItem,
+		Link,
+		Image,
+		Table,
+		TableRow,
+		TableHeader,
+		TableCell,
+		Extension,
+		Plugin,
+		PluginKey,
+	} = tiptap;
+
+	const editorElement = document.querySelector('#editor');
+	if (editorElement) {
+		editorElement.innerHTML = '';
+	}
+
+	const CodeBlockWithLanguage = CodeBlock.extend({
+		renderHTML({ node, HTMLAttributes }) {
+			const language = node.attrs.language || null;
+			const className = language ? `${this.options.languageClassPrefix}${language}` : null;
+			const preAttrs = mergeAttributes(
+				this.options.HTMLAttributes,
+				HTMLAttributes,
+				language ? { 'data-language': language } : {}
+			);
+			const codeAttrs = mergeAttributes(
+				className ? { class: className } : {},
+				language ? { 'data-language': language } : {}
+			);
+			return ['pre', preAttrs, ['code', codeAttrs, 0]];
+		},
+	});
+
+	const ImageWithBase = Image.extend({
+		addNodeView() {
+			return ({ node }) => {
+				const img = document.createElement('img');
+				const update = (nextNode) => {
+					if (nextNode.type.name !== 'image') {
+						return false;
+					}
+					const src = resolveImageSrc(nextNode.attrs.src);
+					if (src) {
+						img.src = src;
+					}
+					if (nextNode.attrs.alt) {
+						img.alt = nextNode.attrs.alt;
+					} else {
+						img.removeAttribute('alt');
+					}
+					return true;
+				};
+				update(node);
+				return { dom: img, update };
+			};
+		},
+		renderHTML({ node, HTMLAttributes }) {
+			const src = resolveImageSrc(node.attrs.src);
+			return ['img', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes, { src })];
+		},
+	});
+
+	const PrismHighlight = Extension.create({
+		name: 'prismHighlight',
+		addProseMirrorPlugins() {
+			const prismInstance = window.Prism || (typeof globalThis !== 'undefined' ? globalThis.Prism : null);
+			if (!prismInstance) {
+				console.warn('[Typedown] Prism not available for highlighting.');
+				return [];
+			}
+
+			return [
+				new Plugin({
+					key: new PluginKey('prismHighlight'),
+					state: {
+						init: (_, { doc }) => createPrismDecorations(doc, prismInstance),
+						apply: (tr, oldState, oldEditorState, newEditorState) => {
+							if (!tr.docChanged) {
+								return oldState;
+							}
+							return createPrismDecorations(newEditorState.doc, prismInstance);
+						},
+					},
+					props: {
+						decorations(state) {
+							return this.getState(state);
+						},
+					},
+				}),
+			];
+		},
+	});
+
+	editor = new Editor({
+		element: document.querySelector('#editor'),
+		extensions: [
+			StarterKit.configure({
+				codeBlock: false,
+				link: false,
+			}),
+			CodeBlockWithLanguage,
+			PrismHighlight,
+			TaskList,
+			TaskItem.configure({ nested: true }),
+			Link.configure({ openOnClick: false }),
+			ImageWithBase,
+			Table.configure({ resizable: true }),
+			TableRow,
+			TableHeader,
+			TableCell,
+			Markdown.configure({
+				html: false,
+				tightLists: true,
+				bulletListMarker: '-',
+				breaks: true,
+			}),
+		],
+		content: '',
+		autofocus: false,
+	});
+
+	setupEditorHandlers();
+	buildToolbar();
+	setupImageObserver();
+
+	if (pendingContent !== null) {
+		setEditorContent(pendingContent);
+		pendingContent = null;
+	} else {
+		const state = vscode.getState();
+		if (state && state.text) {
+			setEditorContent(state.text);
+		}
+	}
+
+	vscode.postMessage({ type: 'initialized' });
+}
+
 window.addEventListener('message', (event) => {
-	console.log('Recieved Message', { 'event.data': JSON.stringify(event.data) });
-	const message = event.data; // The data that the extension sent
+	const message = event.data;
 	switch (message.type) {
 		case 'documentChanged': {
 			const text = message.text;
-			editor.suppressNextDataChangeEvent = true;
+			if (!editor) {
+				pendingContent = text;
+				vscode.setState({ text });
+				return;
+			}
 			setEditorContent(text);
-
-			// This state is returned in the call to `vscode.getState` below when a webview is reloaded.
+			lastMarkdown = text;
 			vscode.setState({ text });
 			break;
 		}
 		case 'scrollChanged': {
-			// TODO
 			break;
 		}
-		case 'fontSizeChanged':
 		case 'fontChanged': {
 			const fontSize = message.fontSize;
-			const fontFamily = message.fontFamily || '';
-			console.log('Updating font to:', { fontSize, fontFamily });
-			// Update the font-size-style element with new CSS
+			let fontFamily = message.fontFamily;
+			if (!fontFamily || fontFamily.trim() === '') {
+				fontFamily = 'monospace';
+			}
+			let codeBlockFontFamily = message.codeBlockFontFamily || message.fontFamily;
+			if (!codeBlockFontFamily || codeBlockFontFamily.trim() === '') {
+				codeBlockFontFamily = 'monospace';
+			}
+
 			const styleElement = document.getElementById('font-size-style');
 			if (styleElement) {
-				const fontFamilyCss = fontFamily ? `"${fontFamily}", ` : '';
 				styleElement.textContent = `
-					.ck.ck-content {
-						font-family: ${fontFamilyCss}monospace !important;
+					.ProseMirror {
+						font-family: ${fontFamily} !important;
 						font-size: ${fontSize}px !important;
 						-webkit-font-smoothing: subpixel-antialiased;
 						-moz-osx-font-smoothing: auto;
 						text-rendering: geometricPrecision;
 					}
-					.ck-editor__editable {
-						font-family: ${fontFamilyCss}monospace !important;
+					.ProseMirror code {
+						font-family: ${codeBlockFontFamily} !important;
+					}
+					.ProseMirror pre,
+					.ProseMirror pre code {
+						font-family: ${codeBlockFontFamily} !important;
 						font-size: ${fontSize}px !important;
-						-webkit-font-smoothing: subpixel-antialiased;
-						-moz-osx-font-smoothing: auto;
-						text-rendering: geometricPrecision;
 					}
 				`;
 			}
 			break;
 		}
-		case 'themeChanged': {
-			const colors = message.colors;
-			console.log('Updating theme colors:', colors);
-			// Update CSS variables
-			if (colors) {
-				const root = document.documentElement;
-				if (colors.foreground) root.style.setProperty('--typedown-theme-foreground', colors.foreground);
-				if (colors.activeBorder) root.style.setProperty('--typedown-theme-active-border', colors.activeBorder);
-				if (colors.buttonBackground) root.style.setProperty('--typedown-theme-button-bg', colors.buttonBackground);
-				if (colors.buttonHoverBackground) root.style.setProperty('--typedown-theme-button-hover-bg', colors.buttonHoverBackground);
-				if (colors.dropdownBackground) root.style.setProperty('--typedown-theme-dropdown-bg', colors.dropdownBackground);
-				if (colors.dropdownForeground) root.style.setProperty('--typedown-theme-dropdown-fg', colors.dropdownForeground);
-				if (colors.dropdownBorder) root.style.setProperty('--typedown-theme-dropdown-border', colors.dropdownBorder);
-			}
-			break;
-		}
 		case 'themeColorChanged': {
 			const sidebarForeground = message.sidebarForeground;
-			console.log('Updating sidebar foreground color:', sidebarForeground);
 			if (sidebarForeground) {
 				const root = document.documentElement;
-				// Use sideBar.foreground for separators, HR lines, and table borders
 				root.style.setProperty('--typedown-theme-separator', sidebarForeground);
 				root.style.setProperty('--typedown-theme-hr-border', sidebarForeground);
 				root.style.setProperty('--typedown-theme-table-border', sidebarForeground);
@@ -260,310 +779,44 @@ window.addEventListener('message', (event) => {
 			}
 			break;
 		}
+		case 'baseUriChanged': {
+			if (typeof message.baseUri === 'string') {
+				imageBaseUri = message.baseUri;
+				updateImageSources();
+			}
+			break;
+		}
+		case 'insertImage': {
+			if (!editor || !message.src) {
+				return;
+			}
+			if (typeof message.baseUri === 'string') {
+				imageBaseUri = message.baseUri;
+			}
+			// Insert image and paragraph in a single transaction
+			editor.chain()
+				.focus()
+				.insertContent([
+					{ type: 'image', attrs: { src: message.src, alt: message.altText || 'Image' } },
+					{ type: 'paragraph' },
+				])
+				.run();
+			
+			// Update image sources after DOM is settled
+			setTimeout(() => {
+				updateImageSources();
+			}, 50);
+			break;
+		}
+		case 'prismThemeChanged': {
+			const styleElement = document.getElementById('prism-user-theme');
+			if (styleElement) {
+				styleElement.textContent = message.css || '';
+			}
+			break;
+		}
 	}
 });
 
-// Webviews are normally torn down when not visible and re-created when they become visible again.
-// State lets us save information across these re-loads
-const state = vscode.getState();
-if (state) {
-	setEditorContent(state.text);
-}
-
-
-// Add keyboard handlers to allow exiting code blocks
-function setupCodeBlockExitHandlers() {
-	const model = editor.model;
-	
-	// Helper function to find the code block containing the selection
-	function findCodeBlock() {
-		const selection = model.document.selection;
-		const position = selection.getFirstPosition();
-		
-		// Check selected element first
-		const selectedElement = selection.getSelectedElement();
-		if (selectedElement && (selectedElement.name === 'codeBlock' || selectedElement.name === 'code')) {
-			console.log('Found code block in selected element:', selectedElement.name);
-			return selectedElement;
-		}
-		
-		// Walk up the tree to find a code block
-		let parent = position.parent;
-		let depth = 0;
-		while (parent && depth < 10) {
-			// Check for various possible code block names
-			if (parent.name === 'codeBlock' || parent.name === 'code' || parent.name === 'fencedCode') {
-				console.log('Found code block at depth', depth, 'name:', parent.name);
-				return parent;
-			}
-			// Stop if we've reached the root
-			if (parent === model.document.getRoot()) {
-				break;
-			}
-			parent = parent.parent;
-			depth++;
-		}
-		return null;
-	}
-	
-	// Helper function to check if position is at the end of a code block
-	function isAtEndOfCodeBlock(codeBlock, position) {
-		if (!codeBlock) return false;
-		
-		// Check if position is within the code block
-		const codeBlockRange = model.createRangeIn(codeBlock);
-		if (!codeBlockRange.containsPosition(position)) {
-			return false;
-		}
-		
-		// Check if we're at or near the end of the code block
-		const codeBlockEnd = codeBlockRange.end;
-		
-		// Check if position is at the end or very close to it (within last few characters)
-		// This handles cases where cursor might be slightly before the absolute end
-		const distanceFromEnd = codeBlockEnd.offset - position.offset;
-		
-		// Consider "at end" if we're at the end position or very close (within 5 characters)
-		// This makes it easier to exit the code block
-		return position.isEqual(codeBlockEnd) || (distanceFromEnd >= 0 && distanceFromEnd <= 5);
-	}
-	
-	// Helper function to check if position is at the beginning of a code block
-	function isAtStartOfCodeBlock(codeBlock, position) {
-		if (!codeBlock) return false;
-		
-		// Check if position is within the code block
-		const codeBlockRange = model.createRangeIn(codeBlock);
-		if (!codeBlockRange.containsPosition(position)) {
-			return false;
-		}
-		
-		// Check if we're at the very start of the code block
-		const codeBlockStart = codeBlockRange.start;
-		return position.isEqual(codeBlockStart);
-	}
-	
-	// Handle ArrowDown at the end of code block - move cursor outside
-	editor.keystrokes.set('ArrowDown', (data, cancel) => {
-		console.log('ArrowDown key pressed');
-		const codeBlock = findCodeBlock();
-		console.log('Code block found:', !!codeBlock);
-		if (codeBlock) {
-			const selection = model.document.selection;
-			const position = selection.getFirstPosition();
-			const codeBlockRange = model.createRangeIn(codeBlock);
-			
-			const codeBlockStart = codeBlockRange.start.offset;
-			const codeBlockEnd = codeBlockRange.end.offset;
-			const isInside = codeBlockRange.containsPosition(position);
-			const isAtEnd = position.offset >= codeBlockEnd; // End is exclusive, so >= means at or past end
-			
-			console.log('Position check:', {
-				positionOffset: position.offset,
-				codeBlockRangeStart: codeBlockStart,
-				codeBlockRangeEnd: codeBlockEnd,
-				containsPosition: isInside,
-				isAtEnd: isAtEnd
-			});
-			
-			// Check if we're in the code block OR at the end (end is exclusive in ranges)
-			if (isInside || isAtEnd) {
-				const codeBlockEndPos = codeBlockRange.end;
-				const codeBlockStartPos = codeBlockRange.start;
-				const codeBlockSize = codeBlockEndPos.offset - codeBlockStartPos.offset;
-				const positionFromStart = position.offset - codeBlockStartPos.offset;
-				const positionFromEnd = codeBlockEndPos.offset - position.offset;
-				
-				// Calculate what percentage through the code block we are
-				const percentThrough = codeBlockSize > 0 ? (positionFromStart / codeBlockSize) * 100 : 0;
-				
-				// Debug logging
-				console.log('ArrowDown in code block', {
-					codeBlockSize,
-					positionFromStart,
-					positionFromEnd,
-					percentThrough: percentThrough.toFixed(1),
-					isAtEnd: isAtEnd,
-					positionOffset: position.offset,
-					codeBlockEndOffset: codeBlockEndPos.offset,
-					codeBlockStartOffset: codeBlockStartPos.offset
-				});
-				
-				let shouldExit = false;
-				let isAtEndOfLastLine = false;
-				
-				// If we're at or past the end, always exit
-				if (isAtEnd || positionFromEnd <= 0) {
-					console.log('At end of code block, exiting');
-					shouldExit = true;
-				} else {
-					// Try to get the actual text content to check if we're at the end of the last line
-					try {
-						// Get text from current position to end of code block
-						const rangeToEnd = model.createRange(position, codeBlockEndPos);
-						let textAfter = '';
-						for (const item of rangeToEnd.getItems()) {
-							if (item && item.data) {
-								textAfter += item.data;
-							}
-						}
-						// Check if we're at the end: either no text after, or we're very close to the end
-						// AND there's no newline after us (meaning we're at the end of the last line)
-						const noNewlineAfter = !textAfter.includes('\n');
-						const veryCloseToEnd = positionFromEnd <= 3; // Within last 3 characters
-						isAtEndOfLastLine = noNewlineAfter && (veryCloseToEnd || !textAfter.trim());
-						console.log('Text after cursor:', JSON.stringify(textAfter), 'isAtEndOfLastLine:', isAtEndOfLastLine, 'positionFromEnd:', positionFromEnd);
-					} catch (e) {
-						console.log('Error checking text after cursor:', e);
-					}
-					
-					// Exit if we're at the end of the last line
-					shouldExit = isAtEndOfLastLine;
-				}
-				
-				console.log('Should exit?', shouldExit, {
-					isAtEnd: isAtEnd,
-					isAtEndOfLastLine: isAtEndOfLastLine,
-					percentThrough: percentThrough,
-					positionFromEnd: positionFromEnd,
-					codeBlockSize: codeBlockSize
-				});
-				
-				if (shouldExit) {
-					console.log('Exiting code block via ArrowDown', {
-						percentThrough: percentThrough.toFixed(1),
-						positionFromEnd,
-						isAtEnd: position.isEqual(codeBlockEnd)
-					});
-					
-					model.change((writer) => {
-						// Try to find the next sibling element
-						const root = model.document.getRoot();
-						const children = Array.from(root.getChildren());
-						const codeBlockIndex = children.indexOf(codeBlock);
-						
-						console.log('Code block index:', codeBlockIndex, 'Total children:', children.length, 'Children:', children.map(c => c.name));
-						
-						if (codeBlockIndex >= 0 && codeBlockIndex < children.length - 1) {
-							// There's a next element, move selection there
-							const nextElement = children[codeBlockIndex + 1];
-							console.log('Moving to next element:', nextElement.name);
-							writer.setSelection(nextElement, 0);
-						} else {
-							// No next element, create a new paragraph
-							console.log('Creating new paragraph after code block');
-							const paragraph = writer.createElement('paragraph');
-							writer.insert(paragraph, model.createPositionAfter(codeBlock));
-							writer.setSelection(paragraph, 0);
-						}
-					});
-					cancel();
-					return;
-				}
-			}
-		}
-	}, { priority: 'highest' });
-	
-	// Handle ArrowUp at the beginning of code block - move cursor outside
-	editor.keystrokes.set('ArrowUp', (data, cancel) => {
-		const codeBlock = findCodeBlock();
-		if (codeBlock) {
-			const selection = model.document.selection;
-			const position = selection.getFirstPosition();
-			
-			if (isAtStartOfCodeBlock(codeBlock, position)) {
-				model.change((writer) => {
-					// Try to find the previous sibling element
-					const root = model.document.getRoot();
-					const children = Array.from(root.getChildren());
-					const codeBlockIndex = children.indexOf(codeBlock);
-					
-					if (codeBlockIndex > 0) {
-						// There's a previous element, move selection there
-						const prevElement = children[codeBlockIndex - 1];
-						writer.setSelection(prevElement, 'end');
-					} else {
-						// No previous element, create a new paragraph
-						const paragraph = writer.createElement('paragraph');
-						writer.insert(paragraph, model.createPositionBefore(codeBlock));
-						writer.setSelection(paragraph, 'end');
-					}
-				});
-				cancel();
-			}
-		}
-	}, { priority: 'high' });
-	
-	// Handle Enter at the end of code block - create new paragraph and exit
-	editor.keystrokes.set('Enter', (data, cancel) => {
-		const codeBlock = findCodeBlock();
-		if (codeBlock) {
-			const selection = model.document.selection;
-			const position = selection.getFirstPosition();
-			
-			if (isAtEndOfCodeBlock(codeBlock, position)) {
-				model.change((writer) => {
-					// Create a new paragraph after the code block
-					const paragraph = writer.createElement('paragraph');
-					writer.insert(paragraph, model.createPositionAfter(codeBlock));
-					writer.setSelection(paragraph, 0);
-				});
-				cancel();
-			}
-		}
-	}, { priority: 'high' });
-	
-	// Handle Escape key to exit code block - move cursor to next element or create paragraph
-	editor.keystrokes.set('Esc', (data, cancel) => {
-		const codeBlock = findCodeBlock();
-		if (codeBlock) {
-			model.change((writer) => {
-				// Try to find the next sibling element
-				const root = model.document.getRoot();
-				const children = Array.from(root.getChildren());
-				const codeBlockIndex = children.indexOf(codeBlock);
-				
-				if (codeBlockIndex >= 0 && codeBlockIndex < children.length - 1) {
-					// There's a next element, move selection there
-					const nextElement = children[codeBlockIndex + 1];
-					writer.setSelection(nextElement, 0);
-				} else if (codeBlockIndex > 0) {
-					// No next element, but there's a previous one
-					const prevElement = children[codeBlockIndex - 1];
-					writer.setSelection(prevElement, 'end');
-				} else {
-					// No siblings, create a new paragraph after
-					const paragraph = writer.createElement('paragraph');
-					writer.insert(paragraph, model.createPositionAfter(codeBlock));
-					writer.setSelection(paragraph, 0);
-				}
-			});
-			cancel();
-		}
-	}, { priority: 'high' });
-}
-
-// Setup code block exit handlers after editor is ready
-function initializeHandlers() {
-	console.log('Setting up code block exit handlers...');
-	try {
-		setupCodeBlockExitHandlers();
-		console.log('Code block exit handlers registered successfully');
-	} catch (error) {
-		console.error('Error setting up code block exit handlers:', error);
-	}
-}
-
-// Wait for editor to be fully ready
-if (editor.state === 'ready' || editor.isReady) {
-	// Use setTimeout to ensure everything is initialized
-	setTimeout(initializeHandlers, 100);
-} else {
-	editor.on('ready', () => {
-		setTimeout(initializeHandlers, 100);
-	});
-}
-
-vscode.postMessage({
-	type: 'initialized',
-});
+// Initialize immediately - bundle is loaded synchronously before this script
+initEditor();

@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import * as fs from 'fs';
+import * as path from 'path';
 import { extensionState } from './extension';
 
 const prettier = require('prettier');
@@ -35,6 +37,28 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		return 'var(--vscode-sideBar-foreground, var(--vscode-foreground))';
 	}
 
+	private getPrismCustomThemeCss(): string {
+		const config = vscode.workspace.getConfiguration('typedown.editor');
+		const configuredPath = (config.get<string>('prismThemePath') || '').trim();
+		if (!configuredPath) {
+			return '';
+		}
+
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
+		const resolvedPath = path.isAbsolute(configuredPath)
+			? configuredPath
+			: workspaceRoot
+				? path.join(workspaceRoot, configuredPath)
+				: configuredPath;
+
+		try {
+			return fs.readFileSync(resolvedPath, 'utf8');
+		} catch (error) {
+			console.warn('[Typedown] Failed to read Prism theme CSS:', error);
+			return '';
+		}
+	}
+
 
 	// Called when our custom editor is opened.
 	public async resolveCustomTextEditor(
@@ -43,9 +67,15 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		_token: vscode.CancellationToken
 	): Promise<void> {
 		// Setup initial webview HTML and settings
-		webviewPanel.webview.options = { enableScripts: true };
+		const documentFolderUri = vscode.Uri.file(path.dirname(document.uri.fsPath));
+		webviewPanel.webview.options = {
+			enableScripts: true,
+			localResourceRoots: [this.context.extensionUri, documentFolderUri],
+		};
 		const sidebarForegroundColor = this.getSideBarForegroundColor();
-		webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, sidebarForegroundColor);
+		const baseFolderUri = vscode.Uri.file(path.dirname(document.uri.fsPath) + path.sep);
+		const baseWebviewUri = webviewPanel.webview.asWebviewUri(baseFolderUri).toString();
+		webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, sidebarForegroundColor, baseWebviewUri);
 		
 		// Send theme color to webview
 		webviewPanel.webview.postMessage({
@@ -87,6 +117,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			handleFocusChange(e.webviewPanel);
 		});
 
+		// Send initial content immediately - webview will store it and use when editor is ready
+		const initialText = document.getText();
+		const normalizedInitialText = initialText.replace(/(?:\r\n|\r|\n)/g, '\n');
+		webviewPanel.webview.postMessage({ 
+			type: 'documentChanged', 
+			text: normalizedInitialText 
+		});
+
+		webviewPanel.webview.postMessage({
+			type: 'baseUriChanged',
+			baseUri: baseWebviewUri,
+		});
+
 		// Initial scroll sync
 		webviewPanel.webview.postMessage({
 			type: 'scrollChanged',
@@ -108,7 +151,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		function updateWebview() {
 			let text = document.getText();
 
-			// Change EOL to \n because that's what CKEditor5 uses internally
+			// Change EOL to \n for consistency
 			const normalizedText = text.replace(/(?:\r\n|\r|\n)/g, '\n');
 
 			// Don't update if we just updated from webview and content hasn't changed externally
@@ -158,19 +201,38 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const onDidChangeConfiguration = vscode.workspace.onDidChangeConfiguration((e) => {
 			if (e.affectsConfiguration('typedown.editor.fontFamily') || 
 				e.affectsConfiguration('typedown.editor.fontSize') ||
+				e.affectsConfiguration('typedown.editor.codeBlockfontFamily') ||
 				e.affectsConfiguration('editor.fontFamily') ||
 				e.affectsConfiguration('editor.fontSize')) {
 				const typedownConfig = vscode.workspace.getConfiguration('typedown.editor');
 				const editorConfig = vscode.workspace.getConfiguration('editor');
 				
 				const fontSize = typedownConfig.get<number>('fontSize') ?? editorConfig.get<number>('fontSize', 14);
-				const fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+				// Get fontFamily for regular text - typedown config takes precedence, otherwise use editor config
+				let fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+				if (!fontFamily || fontFamily.trim() === '') {
+					fontFamily = 'monospace';
+				}
+				// Code blocks use typedown.editor.codeBlockfontFamily if set, otherwise fall back to editor.fontFamily
+				let codeBlockFontFamily = typedownConfig.get<string>('codeBlockfontFamily') ?? editorConfig.get<string>('fontFamily', '');
+				if (!codeBlockFontFamily || codeBlockFontFamily.trim() === '') {
+					codeBlockFontFamily = 'monospace';
+				}
 				
-				console.log('Font configuration changed:', { fontSize, fontFamily });
+				console.log('Font configuration changed:', { fontSize, fontFamily, codeBlockFontFamily });
 				webviewPanel.webview.postMessage({
 					type: 'fontChanged',
 					fontSize: fontSize,
 					fontFamily: fontFamily,
+					codeBlockFontFamily: codeBlockFontFamily,
+				});
+			}
+
+			if (e.affectsConfiguration('typedown.editor.prismThemePath')) {
+				const customPrismCss = this.getPrismCustomThemeCss();
+				webviewPanel.webview.postMessage({
+					type: 'prismThemeChanged',
+					css: customPrismCss,
 				});
 			}
 			
@@ -213,7 +275,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		});
 
 		// Receive message from the webview.
-		webviewPanel.webview.onDidReceiveMessage((e) => {
+		webviewPanel.webview.onDidReceiveMessage(async (e) => {
 			console.log('onDidReceiveMessage: ', [JSON.stringify(e)]);
 			switch (e.type) {
 				case 'webviewChanged':
@@ -222,25 +284,77 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					this.updateTextDocument(document, e.text, isUpdatingFromWebview);
 					return;
 				case 'initialized':
-					updateWebview();
+					webviewPanel.webview.postMessage({
+						type: 'baseUriChanged',
+						baseUri: baseWebviewUri,
+					});
 					return;
 				case 'plainPaste':
 					vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+					return;
+				case 'requestWebviewRefresh':
+					updateWebview();
+					return;
+				case 'requestImageInsert': {
+					const altText = await vscode.window.showInputBox({
+						prompt: 'Image alt text',
+						value: 'Image',
+					});
+					if (altText === undefined) {
+						return;
+					}
+					const docDir = path.dirname(document.uri.fsPath);
+					const selection = await vscode.window.showOpenDialog({
+						canSelectFiles: true,
+						canSelectFolders: false,
+						canSelectMany: false,
+						filters: {
+							Images: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'],
+						},
+					});
+
+					if (!selection || selection.length === 0) {
+						return;
+					}
+
+					const sourcePath = selection[0].fsPath;
+					const baseName = path.basename(sourcePath);
+					let targetPath = path.join(docDir, baseName);
+
+					if (path.resolve(sourcePath) !== path.resolve(targetPath)) {
+						if (fs.existsSync(targetPath)) {
+							const ext = path.extname(baseName);
+							const name = path.basename(baseName, ext);
+							let counter = 1;
+							while (fs.existsSync(targetPath)) {
+								targetPath = path.join(docDir, `${name}-${counter}${ext}`);
+								counter += 1;
+							}
+						}
+						fs.copyFileSync(sourcePath, targetPath);
+					}
+
+					const relativePath = path.relative(docDir, targetPath).replace(/\\/g, '/');
+					webviewPanel.webview.postMessage({
+						type: 'insertImage',
+						src: relativePath,
+						altText: altText || 'Image',
+						baseUri: baseWebviewUri,
+					});
+					return;
+				}
 			}
 		});
 	}
 
 	// Get the static html used for the editor webviews.
-	private getHtmlForWebview(webview: vscode.Webview, sidebarForegroundColor: string = ''): string {
+	private getHtmlForWebview(webview: vscode.Webview, sidebarForegroundColor: string = '', baseWebviewUri: string = ''): string {
 		// Local path to script and css for the webview
 		const initScriptUri = webview.asWebviewUri(
 			vscode.Uri.joinPath(this.context.extensionUri, 'src', 'markdownEditorInitScript.js')
 		);
-		const ckeditorUri = webview.asWebviewUri(
-			vscode.Uri.joinPath(
-				this.context.extensionUri,
-				...'ckeditor5-build-markdown/build/ckeditor.js'.split('/')
-			)
+		const tiptapEditorJsUri = webview.asWebviewUri(
+			vscode.Uri.joinPath(this.context.extensionUri, 'resources', 'tiptap-bundle.js')
 		);
 
 		// Read font configuration - extension config takes precedence over VS Code editor config
@@ -248,7 +362,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const editorConfig = vscode.workspace.getConfiguration('editor');
 		
 		const fontSize = typedownConfig.get<number>('fontSize') ?? editorConfig.get<number>('fontSize', 14);
-		const fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+		// Get fontFamily for regular text - typedown config takes precedence, otherwise use editor config
+		let fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
+		if (!fontFamily || fontFamily.trim() === '') {
+			fontFamily = 'monospace';
+		}
+		// Code blocks use typedown.editor.codeBlockfontFamily if set, otherwise fall back to editor.fontFamily
+		let codeBlockFontFamily = typedownConfig.get<string>('codeBlockfontFamily') ?? editorConfig.get<string>('fontFamily', '');
+		if (!codeBlockFontFamily || codeBlockFontFamily.trim() === '') {
+			codeBlockFontFamily = 'monospace';
+		}
+		const editorWidth = typedownConfig.get<string>('width', '91ch');
+		const customPrismCss = this.getPrismCustomThemeCss();
+		const sanitizedCustomPrismCss = customPrismCss.replace(/<\/style>/gi, '<\\/style>');
 
 		// Use a nonce to only allow a specific script to be run.
 		const nonce = getNonce();
@@ -258,11 +384,59 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		return html/* html */ `<!DOCTYPE html>
 			<html lang="en">
 				<head>
-					<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}'; style-src 'unsafe-inline';" />
+					<meta http-equiv="Content-Security-Policy" content="script-src 'nonce-${nonce}' ${cspSource}; style-src 'unsafe-inline' ${cspSource}; img-src ${cspSource} data: file: vscode-file: vscode-resource: https: vscode-webview:;" />
 
 					<meta charset="UTF-8" />
 					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 					<title>Markdown WYSIWYG Editor</title>
+					<style id="prism-user-theme">${sanitizedCustomPrismCss}</style>
+					<style id="prism-vscode-theme">
+						/* VS Code theme-driven Prism tokens */
+						.token.comment,
+						.token.prolog,
+						.token.doctype,
+						.token.cdata {
+							color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
+						}
+						.token.punctuation {
+							color: var(--vscode-editor-foreground);
+						}
+						.token.property,
+						.token.tag,
+						.token.boolean,
+						.token.number,
+						.token.constant,
+						.token.symbol,
+						.token.deleted {
+							color: var(--vscode-symbolIcon-numberForeground, var(--vscode-editor-foreground));
+						}
+						.token.selector,
+						.token.attr-name,
+						.token.string,
+						.token.char,
+						.token.builtin,
+						.token.inserted {
+							color: var(--vscode-symbolIcon-stringForeground, var(--vscode-editor-foreground));
+						}
+						.token.operator,
+						.token.entity,
+						.token.url,
+						.token.variable {
+							color: var(--vscode-symbolIcon-variableForeground, var(--vscode-editor-foreground));
+						}
+						.token.atrule,
+						.token.function,
+						.token.class-name {
+							color: var(--vscode-symbolIcon-functionForeground, var(--vscode-editor-foreground));
+						}
+						.token.keyword {
+							color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-editor-foreground));
+						}
+						.token.regex,
+						.token.important {
+							color: var(--vscode-editorWarning-foreground, var(--vscode-editor-foreground));
+						}
+					</style>
 					
 					<style>
 						:root {
@@ -278,245 +452,366 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							--typedown-theme-dropdown-bg: var(--vscode-dropdown-background);
 							--typedown-theme-dropdown-fg: var(--vscode-dropdown-foreground);
 							--typedown-theme-dropdown-border: var(--vscode-dropdown-border);
+							--typedown-theme-input-bg: var(--vscode-input-background);
+							--typedown-theme-input-fg: var(--vscode-input-foreground);
+							--typedown-theme-input-border: var(--vscode-input-border);
 						}
 						
-						/* Center and constrain editor width */
+						html, body {
+							height: 100%;
+							overflow-x: hidden;
+						}
+						
 						body {
 							display: flex;
 							flex-direction: column;
 							align-items: center;
+							margin: 0;
+							padding: 0;
+							background-color: var(--vscode-editor-background);
+							color: var(--vscode-editor-foreground);
+						}
+						
+						#toolbar {
+							position: fixed;
+							top: 0;
+							left: 0;
+							z-index: 1000;
+							display: flex;
+							flex-wrap: wrap;
+							gap: 6px;
+							padding: 6px 8px;
+							box-sizing: border-box;
+							background-color: var(--vscode-editor-background);
+							border-bottom: 1px solid var(--typedown-theme-separator);
+						}
+						
+						body.has-fixed-toolbar {
+							padding-top: 46px;
 						}
 						
 						#editor {
 							width: 100%;
-							max-width: 91ch;
-							margin: 0 auto;
+							max-width: ${editorWidth};
+							margin: 0;
 							padding: 0;
 							box-sizing: border-box;
 						}
 						
-						/* Constrain CKEditor root container */
-						.ck.ck-editor {
-							max-width: 91ch !important;
-							width: 100% !important;
-							margin: 0 auto !important;
-							box-sizing: border-box;
+						.ProseMirror {
+							padding: 12px 0 40px;
+							outline: none;
+							font-family: ${fontFamily};
+							font-size: ${fontSize}px;
+							-webkit-font-smoothing: subpixel-antialiased;
+							-moz-osx-font-smoothing: auto;
+							text-rendering: geometricPrecision;
+							color: var(--vscode-editor-foreground);
+							min-height: 60vh;
 						}
 						
-						/* Constrain toolbar and all its wrappers */
-						.ck.ck-editor__top,
-						.ck.ck-editor__toolbar-container,
-						.ck.ck-toolbar,
-						.ck.ck-toolbar__items {
-							max-width: 91ch !important;
-							width: 100% !important;
-							box-sizing: border-box;
+						.ProseMirror code {
+							font-family: ${codeBlockFontFamily};
 						}
 						
-						/* Constrain main content area */
-						.ck.ck-editor__main,
-						.ck.ck-editor__editable-container {
-							max-width: 91ch !important;
-							width: 100% !important;
-							box-sizing: border-box;
+						.ProseMirror pre {
+							background-color: var(--vscode-editor-background);
+							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 35%, transparent);
+							border-radius: 4px;
+							padding: 1em;
+							overflow: auto;
+							position: relative;
 						}
 						
-						/* Center toolbar content */
-						.ck.ck-toolbar {
+						.ProseMirror pre[data-language]::before {
+							content: attr(data-language);
+							position: absolute;
+							top: 6px;
+							right: 8px;
+							font-size: 11px;
+							padding: 2px 6px;
+							border-radius: 3px;
+							background-color: var(--vscode-editor-background);
+							color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
+							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 35%, transparent);
+							text-transform: none;
+						}
+						
+						.ProseMirror pre code {
+							background: transparent !important;
+						}
+						
+						.ProseMirror img {
+							max-width: 100%;
+							height: auto;
+							display: block;
+							margin: 8px 0;
+							border-radius: 4px;
+						}
+						
+						.ProseMirror blockquote {
+							border-left: 3px solid var(--typedown-theme-separator);
+							padding-left: 12px;
+							margin-left: 0;
+						}
+						
+						.ProseMirror hr {
+							border-color: var(--typedown-theme-hr-border);
+							opacity: 0.6;
+						}
+						
+						.ProseMirror table {
+							border-collapse: collapse;
+						}
+						
+						.ProseMirror table td,
+						.ProseMirror table th {
+							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 35%, transparent);
+							padding: 6px 10px;
+						}
+						
+						.ProseMirror ul[data-type="taskList"] {
+							list-style: none;
+							padding-left: 0;
+						}
+						
+						.ProseMirror li[data-type="taskItem"] {
 							display: flex;
+							align-items: center;
+							flex-direction: row;
+							gap: 8px;
+						}
+						
+						.ProseMirror li[data-type="taskItem"] > label {
+							display: inline-flex;
+							align-items: center;
+							margin: 0;
+							flex: 0 0 auto;
+						}
+
+						.ProseMirror li[data-checked] {
+							display: flex !important;
+							align-items: center !important;
+							flex-direction: row !important;
+							gap: 8px !important;
+						}
+						
+						.ProseMirror li[data-checked] > label {
+							display: inline-flex !important;
+							align-items: center !important;
+							margin: 0 !important;
+							flex: 0 0 auto !important;
+						}
+						
+						.ProseMirror li[data-checked] > div {
+							flex: 1 !important;
+							margin: 0 !important;
+							display: inline-block !important;
+						}
+						
+						.ProseMirror li[data-checked] > div > p {
+							display: inline !important;
+							margin: 0 !important;
+						}
+						
+						.ProseMirror li[data-checked] > label input {
+							margin: 0 6px 0 0 !important;
+							vertical-align: middle !important;
+						}
+						
+						.ProseMirror li[data-type="taskItem"] > div {
+							flex: 1;
+							margin: 0;
+							display: inline-block;
+						}
+						
+						.ProseMirror li[data-type="taskItem"] > label input {
+							margin: 0 6px 0 0;
+							vertical-align: middle;
+						}
+						
+						.typedown-toolbar button,
+						.typedown-toolbar select {
+							background-color: transparent;
+							border: 1px solid transparent;
+							color: var(--vscode-button-foreground, var(--vscode-foreground));
+							border-radius: 3px;
+							padding: 4px 6px;
+							transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+							font-size: 12px;
+						}
+						
+						.typedown-toolbar button svg {
+							width: 16px;
+							height: 16px;
+							display: block;
+						}
+						
+						.typedown-toolbar button[data-tooltip] {
+							position: relative;
+						}
+						
+						.typedown-toolbar button[data-tooltip]::after {
+							content: attr(data-tooltip);
+							position: absolute;
+							bottom: -28px;
+							left: 50%;
+							transform: translateX(-50%);
+							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background));
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground));
+							border: 1px solid var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border));
+							border-radius: 4px;
+							padding: 2px 6px;
+							font-size: 11px;
+							white-space: nowrap;
+							opacity: 0;
+							pointer-events: none;
+							transition: opacity 0.15s ease-in-out;
+							z-index: 1002;
+						}
+						
+						.typedown-toolbar button[data-tooltip]:hover::after,
+						.typedown-toolbar button[data-tooltip]:focus::after {
+							opacity: 1;
+						}
+						
+						.typedown-dialog-overlay {
+							position: fixed;
+							inset: 0;
+							background-color: rgba(0, 0, 0, 0.35);
+							display: flex;
+							align-items: center;
 							justify-content: center;
+							opacity: 0;
+							pointer-events: none;
+							transition: opacity 0.2s ease-in-out;
+							z-index: 1100;
 						}
 						
-						/* Ensure toolbar groups don't overflow */
-						.ck.ck-toolbar .ck-toolbar__items {
-							max-width: 100% !important;
-							overflow: visible !important;
+						.typedown-dialog-overlay.is-visible {
+							opacity: 1;
+							pointer-events: auto;
 						}
 						
-						/* Ensure dropdowns are visible and properly positioned */
-						.ck.ck-dropdown__panel {
-							z-index: 10000 !important;
-							position: absolute !important;
-							overflow: visible !important;
-							max-height: 400px !important;
-							overflow-y: auto !important;
-							overflow-x: hidden !important;
-							border-color: var(--typedown-theme-active-border) !important;
-							outline-color: var(--typedown-theme-active-border) !important;
+						.typedown-dialog {
+							min-width: 320px;
+							max-width: 420px;
+							background-color: var(--vscode-editor-background);
+							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 50%, transparent);
+							border-radius: 6px;
+							padding: 16px;
+							box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+							color: var(--vscode-editor-foreground);
 						}
 						
-						/* Style dropdown panel border/outline */
-						.ck.ck-dropdown__panel.ck-dropdown__panel {
-							border: 1px solid var(--typedown-theme-active-border) !important;
-							box-shadow: 0 2px 8px var(--typedown-theme-active-border)33 !important;
+						.typedown-dialog-title {
+							font-size: 14px;
+							font-weight: 600;
+							margin-bottom: 12px;
 						}
 						
-						/* Make dropdown list scrollable */
-						.ck.ck-dropdown__panel .ck-list {
-							max-height: 400px !important;
-							overflow-y: auto !important;
-							overflow-x: hidden !important;
+						.typedown-dialog-field {
+							display: flex;
+							flex-direction: column;
+							gap: 6px;
+							margin-bottom: 12px;
+							font-size: 12px;
+							color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
 						}
 						
-						/* Style dropdown button when open */
-						.ck.ck-dropdown.ck-on .ck-button {
-							border-color: var(--typedown-theme-active-border) !important;
+						.typedown-dialog-field input {
+							background-color: var(--typedown-theme-input-bg, var(--vscode-input-background));
+							color: var(--typedown-theme-input-fg, var(--vscode-input-foreground));
+							border: 1px solid var(--typedown-theme-input-border, var(--vscode-input-border));
+							border-radius: 4px;
+							padding: 6px 8px;
 						}
 						
-						/* Style dropdown button hover/focus */
-						.ck.ck-dropdown .ck-button:hover,
-						.ck.ck-dropdown .ck-button:focus {
-							border-color: var(--typedown-theme-active-border) !important;
-							outline-color: var(--typedown-theme-active-border) !important;
+						.typedown-dialog-actions {
+							display: flex;
+							justify-content: flex-end;
+							gap: 8px;
 						}
 						
-						/* Style toolbar separators */
-						.ck.ck-toolbar .ck-toolbar__separator {
-							background-color: var(--typedown-theme-separator) !important;
-							opacity: 0.5 !important;
+						.typedown-dialog-actions button {
+							padding: 4px 10px;
+							border-radius: 4px;
+							border: 1px solid var(--typedown-theme-input-border, var(--vscode-input-border));
+							background-color: var(--vscode-button-background);
+							color: var(--vscode-button-foreground);
+							cursor: pointer;
 						}
 						
-						/* Style horizontal rules (HR) in content */
-						.ck.ck-content hr {
-							border-color: var(--typedown-theme-hr-border) !important;
-							background-color: var(--typedown-theme-hr-border) !important;
-							opacity: 0.6 !important;
+						.typedown-dialog-actions button[data-dialog-cancel] {
+							background-color: transparent;
+							color: var(--vscode-editor-foreground);
 						}
 						
-						.ck.ck-content hr::before {
-							border-color: var(--typedown-theme-hr-border) !important;
+						.typedown-toolbar button:hover,
+						.typedown-toolbar select:hover {
+							background-color: var(--vscode-list-hoverBackground);
+							border-color: var(--vscode-list-hoverBackground);
 						}
 						
-						.ck.ck-content hr::after {
-							border-color: var(--typedown-theme-hr-border) !important;
+						.typedown-toolbar button.active {
+							background-color: var(--vscode-button-background);
+							border-color: var(--vscode-button-background);
+							color: var(--vscode-button-foreground);
 						}
 						
-						.ck.ck-content table,
-						.ck-editor__editable table {
-							border-color: var(--typedown-theme-table-border) !important;
-						
+						.typedown-toolbar select {
+							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background));
+							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground));
+							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border));
 						}
 						
-						/* Add padding to table cells to prevent content from touching edges */
-						.ck.ck-content table td,
-						.ck.ck-content table th,
-						.ck-editor__editable table td,
-						.ck-editor__editable table th {
-							padding: 8px 12px !important;
-							border-color: var(--typedown-theme-table-border) !important;
-						}
-						
-						.ck.ck-content table td,
-						.ck.ck-content table th,
-						.ck-editor__editable table td,
-						.ck-editor__editable table th {
-							border-color: var(--typedown-theme-table-border) !important;
-						}
-						
-						.ck.ck-content table thead th,
-						.ck.ck-content table tbody th,
-						.ck-editor__editable table thead th,
-						.ck-editor__editable table tbody th {
-							border-color: var(--typedown-theme-table-border) !important;
-						}
-						
-						.ck.ck-content table tbody td,
-						.ck-editor__editable table tbody td {
-							border-color: var(--typedown-theme-table-border) !important;
-						}
-						
-						/* Ensure table containers allow horizontal overflow */
-						.ck.ck-content,
-						.ck-editor__editable {
-							overflow-x: visible !important;
-						}
-						
-						/* Allow parent containers to overflow so tables can break out */
-						.ck.ck-editor__editable-container {
-							overflow-x: visible !important;
-						}
-						
-						.ck.ck-editor__main {
-							overflow-x: visible !important;
-						}
-						
-						/* Ensure body and editor container allow overflow */
-						body {
-							overflow-x: visible !important;
-						}
-						
-						#editor {
-							overflow-x: visible !important;
-						}
-						
-						.ck.ck-toolbar .ck-dropdown {
-							overflow: visible !important;
-						}
-						
-						.ck.ck-editor__top {
-							overflow: visible !important;
-						}
-						
-						.ck.ck-editor__toolbar-container {
-							overflow: visible !important;
-						}
-						
-						/* Make toolbar icons smaller */
-						.ck-toolbar .ck-button .ck-icon {
-							width: 14px !important;
-							height: 14px !important;
-						}
-						
-						.ck-toolbar .ck-dropdown .ck-button .ck-icon {
-							width: 14px !important;
-							height: 14px !important;
-						}
-						
-						.ck-toolbar .ck-button .ck-icon svg {
-							width: 14px !important;
-							height: 14px !important;
-						}
-						
-						/* Apply font family and size to content area only */
-						.ck.ck-content {
-							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
-							font-size: ${fontSize}px !important;
-							-webkit-font-smoothing: subpixel-antialiased;
-							-moz-osx-font-smoothing: auto;
-							text-rendering: geometricPrecision;
-							width: 100% !important;
-							max-width: 91ch !important;
-							box-sizing: border-box;
-						}
-						
-						.ck-editor__editable {
-							font-family: ${fontFamily ? `"${fontFamily}", ` : ''}monospace !important;
-							font-size: ${fontSize}px !important;
-							-webkit-font-smoothing: subpixel-antialiased;
-							-moz-osx-font-smoothing: auto;
-							text-rendering: geometricPrecision;
-							width: 100% !important;
-							max-width: 91ch !important;
-							box-sizing: border-box;
-						}
-						
-						/* Match toolbar and content padding for alignment */
-						.ck.ck-toolbar {
-							padding-left: var(--ck-spacing-large, 0.5em) !important;
-							padding-right: var(--ck-spacing-large, 0.5em) !important;
-						}
-						
-						.ck.ck-content {
-							padding-left: var(--ck-spacing-large, 0.5em) !important;
-							padding-right: var(--ck-spacing-large, 0.5em) !important;
+						/* Prism background overrides */
+						:not(pre) > code[class*="language-"],
+						pre[class*="language-"],
+						.ProseMirror pre[class*="language-"],
+						.ProseMirror code[class*="language-"] {
+							background: transparent !important;
+							background-color: transparent !important;
 						}
 					</style>
 					<style id="font-size-style"></style>
+					<style id="prism-theme-override">
+						/* Final override for PrismJS - ensure transparent backgrounds and remove inner borders */
+						.ProseMirror pre[class*="language-"],
+						.ProseMirror code[class*="language-"] {
+							background: transparent !important;
+							background-color: transparent !important;
+							text-shadow: none !important;
+							border: none !important;
+							padding: 0 !important;
+							margin: 0 !important;
+						}
+						
+						/* Remove PrismJS default padding from pre elements inside code blocks */
+						.ProseMirror pre[class*="language-"] {
+							padding: 0 !important;
+							margin: 0 !important;
+						}
+						
+						/* Ensure unhighlighted code is visible and matches highlighted blocks */
+						.ProseMirror pre:not([class*="language-"]) code,
+						.ProseMirror pre code:not([class*="language-"]),
+						.ProseMirror code:not([class*="language-"]) {
+							color: var(--vscode-editor-foreground) !important;
+							background: transparent !important;
+							border: none !important;
+						}
+					</style>
+					<style id="prism-vscode-theme"></style>
 				</head>
 				<body>
+					<div id="toolbar" class="typedown-toolbar"></div>
 					<div id="editor"></div>
 
-					<script nonce="${nonce}" src="${ckeditorUri}"></script>
+					<script nonce="${nonce}">
+						window.__typedownBaseUri = ${JSON.stringify(baseWebviewUri)};
+					</script>
+					<script nonce="${nonce}" src="${tiptapEditorJsUri}"></script>
 					<script nonce="${nonce}">
 						// Try to read VS Code theme CSS variables if available
 						// VS Code webviews may have access to some CSS variables
@@ -528,6 +823,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							const vscodeVars = {
 								'--vscode-foreground': computedStyle.getPropertyValue('--vscode-foreground'),
 								'--vscode-editor-foreground': computedStyle.getPropertyValue('--vscode-editor-foreground'),
+								'--vscode-editor-background': computedStyle.getPropertyValue('--vscode-editor-background'),
 								'--vscode-editorGroup-border': computedStyle.getPropertyValue('--vscode-editorGroup-border'),
 								'--vscode-editorWidget-border': computedStyle.getPropertyValue('--vscode-editorWidget-border'),
 								'--vscode-button-background': computedStyle.getPropertyValue('--vscode-button-background'),
@@ -535,6 +831,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 								'--vscode-dropdown-background': computedStyle.getPropertyValue('--vscode-dropdown-background'),
 								'--vscode-dropdown-foreground': computedStyle.getPropertyValue('--vscode-dropdown-foreground'),
 								'--vscode-dropdown-border': computedStyle.getPropertyValue('--vscode-dropdown-border'),
+								'--vscode-input-background': computedStyle.getPropertyValue('--vscode-input-background'),
+								'--vscode-input-foreground': computedStyle.getPropertyValue('--vscode-input-foreground'),
+								'--vscode-input-border': computedStyle.getPropertyValue('--vscode-input-border'),
+								'--vscode-list-hoverBackground': computedStyle.getPropertyValue('--vscode-list-hoverBackground'),
 							};
 							
 							// Update our CSS variables with VS Code theme variables if available
@@ -569,17 +869,53 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							if (vscodeVars['--vscode-dropdown-border']) {
 								root.style.setProperty('--typedown-theme-dropdown-border', vscodeVars['--vscode-dropdown-border']);
 							}
+							if (vscodeVars['--vscode-input-background']) {
+								root.style.setProperty('--typedown-theme-input-bg', vscodeVars['--vscode-input-background']);
+							}
+							if (vscodeVars['--vscode-input-foreground']) {
+								root.style.setProperty('--typedown-theme-input-fg', vscodeVars['--vscode-input-foreground']);
+							}
+							if (vscodeVars['--vscode-input-border']) {
+								root.style.setProperty('--typedown-theme-input-border', vscodeVars['--vscode-input-border']);
+							}
+							
+							// Detect theme (dark/light) by checking background color brightness
+							function detectAndSetTheme() {
+								const bgColor = vscodeVars['--vscode-editor-background'] || computedStyle.getPropertyValue('--vscode-editor-background');
+								if (bgColor) {
+									// Convert hex/rgb to brightness
+									let r, g, b;
+									const rgbMatch = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+									const hexMatch = bgColor.match(/#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
+									
+									if (rgbMatch) {
+										r = parseInt(rgbMatch[1], 10);
+										g = parseInt(rgbMatch[2], 10);
+										b = parseInt(rgbMatch[3], 10);
+									} else if (hexMatch) {
+										r = parseInt(hexMatch[1], 16);
+										g = parseInt(hexMatch[2], 16);
+										b = parseInt(hexMatch[3], 16);
+									}
+									
+									if (r !== undefined && g !== undefined && b !== undefined) {
+										const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+										const isDark = brightness < 128;
+										const theme = isDark ? 'dark' : 'light';
+										
+										// Set theme attribute on body and editor container
+										document.body.setAttribute('data-theme', theme);
+										const editorContainer = document.querySelector('.ProseMirror');
+										if (editorContainer) {
+											editorContainer.setAttribute('data-theme', theme);
+										}
+									}
+								}
+							}
+							
+							// Detect theme immediately
+							detectAndSetTheme();
 						})();
-						
-						MarkdownEditor.create(document.querySelector('#editor'))
-							.then((editor) => {
-								window.editor = editor;
-								editor.timeLastModified = new Date();
-								console.log('CKEditor instance:', editor);
-							})
-							.catch((error) => {
-								console.error('CKEditor Initialization Error:', error);
-							});
 					</script>
 					<script nonce="${nonce}" src="${initScriptUri}"></script>
 				</body>

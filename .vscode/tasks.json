@@ -16,6 +16,27 @@
 		},
 		{
 			"type": "npm",
+			"script": "build:editor",
+			"problemMatcher": [],
+			"isBackground": false,
+			"presentation": {
+				"reveal": "silent"
+			}
+		},
+		{
+			"label": "build:extension",
+			"dependsOn": [
+				"npm: build:editor",
+				"npm: webpack"
+			],
+			"problemMatcher": [],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "npm",
 			"script": "webpack-dev",
 			"problemMatcher": "$tsc-watch",
 			"isBackground": true,
