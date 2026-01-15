@@ -11,6 +11,7 @@ let suppressNextChangeEvent = false;
 let lastMarkdown = '';
 let imageBaseUri = typeof window !== 'undefined' && window.__typedownBaseUri ? window.__typedownBaseUri : '';
 let linkDialog = null;
+let tableDialog = null;
 
 function getTiptapBundle() {
 	return (typeof window !== 'undefined' && window.tiptap) ||
@@ -343,6 +344,91 @@ function promptForImage() {
 	});
 }
 
+function ensureTableDialog() {
+	if (tableDialog) {
+		return tableDialog;
+	}
+
+	const overlay = document.createElement('div');
+	overlay.className = 'typedown-dialog-overlay';
+
+	const dialog = document.createElement('div');
+	dialog.className = 'typedown-dialog';
+	dialog.innerHTML = `
+		<div class="typedown-dialog-title">Insert Table</div>
+		<label class="typedown-dialog-field">
+			<span>Rows (excluding header)</span>
+			<input type="number" data-table-rows min="1" max="100" value="2" />
+		</label>
+		<label class="typedown-dialog-field">
+			<span>Columns</span>
+			<input type="number" data-table-cols min="1" max="20" value="3" />
+		</label>
+		<div class="typedown-dialog-actions">
+			<button type="button" data-dialog-cancel>Cancel</button>
+			<button type="button" data-dialog-confirm>Insert</button>
+		</div>
+	`;
+
+	overlay.appendChild(dialog);
+	document.body.appendChild(overlay);
+
+	tableDialog = {
+		overlay,
+		dialog,
+		rowsInput: dialog.querySelector('input[data-table-rows]'),
+		colsInput: dialog.querySelector('input[data-table-cols]'),
+		confirmButton: dialog.querySelector('button[data-dialog-confirm]'),
+		cancelButton: dialog.querySelector('button[data-dialog-cancel]'),
+	};
+
+	tableDialog.cancelButton.addEventListener('click', () => {
+		overlay.classList.remove('is-visible');
+	});
+
+	overlay.addEventListener('click', (event) => {
+		if (event.target === overlay) {
+			overlay.classList.remove('is-visible');
+		}
+	});
+
+	return tableDialog;
+}
+
+function openTableDialog({ onConfirm }) {
+	const dialog = ensureTableDialog();
+	dialog.rowsInput.value = '2';
+	dialog.colsInput.value = '3';
+	dialog.overlay.classList.add('is-visible');
+
+	requestAnimationFrame(() => {
+		dialog.rowsInput.focus();
+		dialog.rowsInput.select();
+	});
+
+	const handleConfirm = () => {
+		// +1 for the header row (markdown tables require a header)
+		const rows = Math.max(1, Math.min(100, parseInt(dialog.rowsInput.value, 10) || 2)) + 1;
+		const cols = Math.max(1, Math.min(20, parseInt(dialog.colsInput.value, 10) || 3));
+		dialog.overlay.classList.remove('is-visible');
+		onConfirm(rows, cols);
+	};
+
+	const handleKeydown = (event) => {
+		if (event.key === 'Escape') {
+			dialog.overlay.classList.remove('is-visible');
+		}
+		if (event.key === 'Enter' && !event.shiftKey) {
+			event.preventDefault();
+			handleConfirm();
+		}
+	};
+
+	dialog.confirmButton.onclick = handleConfirm;
+	dialog.rowsInput.onkeydown = handleKeydown;
+	dialog.colsInput.onkeydown = handleKeydown;
+}
+
 function openLinkDialog({ text, url, onConfirm }) {
 	const dialog = ensureLinkDialog();
 	dialog.textInput.value = text || '';
@@ -425,7 +511,11 @@ function handleToolbarAction(action, button) {
 			break;
 		}
 		case 'table':
-			editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+			openTableDialog({
+				onConfirm: (rows, cols) => {
+					editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
+				},
+			});
 			break;
 		case 'image': {
 			promptForImage();

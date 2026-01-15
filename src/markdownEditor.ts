@@ -35,29 +35,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		return 'var(--vscode-sideBar-foreground, var(--vscode-foreground))';
 	}
 
-	private getPrismCustomThemeCss(): string {
-		const config = vscode.workspace.getConfiguration('typedown.editor');
-		const configuredPath = (config.get<string>('prismThemePath') || '').trim();
-		if (!configuredPath) {
-			return '';
-		}
-
-		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri?.fsPath;
-		const resolvedPath = path.isAbsolute(configuredPath)
-			? configuredPath
-			: workspaceRoot
-				? path.join(workspaceRoot, configuredPath)
-				: configuredPath;
-
-		try {
-			return fs.readFileSync(resolvedPath, 'utf8');
-		} catch (error) {
-			console.warn('[Typedown] Failed to read Prism theme CSS:', error);
-			return '';
-		}
-	}
-
-
 	// Called when our custom editor is opened.
 	public async resolveCustomTextEditor(
 		document: vscode.TextDocument,
@@ -226,13 +203,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				});
 			}
 
-			if (e.affectsConfiguration('typedown.editor.prismThemePath')) {
-				const customPrismCss = this.getPrismCustomThemeCss();
-				webviewPanel.webview.postMessage({
-					type: 'prismThemeChanged',
-					css: customPrismCss,
-				});
-			}
 			
 			// Update theme colors when theme changes
 			if (e.affectsConfiguration('workbench.colorTheme') || 
@@ -371,8 +341,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			codeBlockFontFamily = 'monospace';
 		}
 		const editorWidth = typedownConfig.get<string>('width', '91ch');
-		const customPrismCss = this.getPrismCustomThemeCss();
-		const sanitizedCustomPrismCss = customPrismCss.replace(/<\/style>/gi, '<\\/style>');
 
 		// Use a nonce to only allow a specific script to be run.
 		const nonce = getNonce();
@@ -387,7 +355,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					<meta charset="UTF-8" />
 					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 					<title>Markdown WYSIWYG Editor</title>
-					<style id="prism-user-theme">${sanitizedCustomPrismCss}</style>
+					<style id="prism-user-theme"></style>
 					<style id="prism-vscode-theme">
 						/* VS Code theme-driven Prism tokens */
 						.token.comment,

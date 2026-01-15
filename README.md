@@ -142,16 +142,6 @@ Set the maximum width of the editor content area:
 
 Default is `91ch`. Accepts any valid CSS width value (e.g., `800px`, `100%`).
 
-### Custom Prism Theme
-
-Use a custom PrismJS theme for syntax highlighting:
-
-```json
-{
-  "typedown.editor.prismThemePath": "/path/to/custom-prism-theme.css"
-}
-```
-
 ### Example Configuration
 
 Here's a complete example configuration:

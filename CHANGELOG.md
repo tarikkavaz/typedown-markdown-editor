@@ -53,10 +53,12 @@ All notable changes to this project will be documented in this file.
 - Migrated from CKEditor to Tiptap for better performance and smaller bundle size
 
 ### Added
+- Syntax highlighting for code blocks
 - Image insertion dialog with file picker
 - Link editing dialog for inserting and editing links
-- PrismJS syntax highlighting for code blocks (16 languages supported)
 - Task list support with checkboxes
-- Custom Prism theme path configuration (`typedown.editor.prismThemePath`)
-- Code block font family configuration (`typedown.editor.codeBlockfontFamily`)
-- Editor width configuration (`typedown.editor.width`)
+
+## [1.1.1] - 2025-01-16
+
+### Added
+- Table insertion dialog that prompts for row and column counts
