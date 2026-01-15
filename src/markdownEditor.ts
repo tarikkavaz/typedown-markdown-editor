@@ -516,7 +516,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						
 						.ProseMirror pre {
 							background-color: var(--vscode-editor-background);
-							border: 1px solid var(--typedown-theme-table-border);
+							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 35%, transparent);
 							border-radius: 4px;
 							padding: 1em;
 							overflow: auto;
@@ -533,7 +533,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							border-radius: 3px;
 							background-color: var(--vscode-editor-background);
 							color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
-							border: 1px solid var(--typedown-theme-table-border);
+							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 35%, transparent);
 							text-transform: none;
 						}
 						
@@ -566,7 +566,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						
 						.ProseMirror table td,
 						.ProseMirror table th {
-							border: 1px solid var(--typedown-theme-table-border);
+							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 35%, transparent);
 							padding: 6px 10px;
 						}
 						
@@ -697,7 +697,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							min-width: 320px;
 							max-width: 420px;
 							background-color: var(--vscode-editor-background);
-							border: 1px solid var(--typedown-theme-table-border);
+							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 50%, transparent);
 							border-radius: 6px;
 							padding: 16px;
 							box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
@@ -811,75 +811,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					<script nonce="${nonce}">
 						window.__typedownBaseUri = ${JSON.stringify(baseWebviewUri)};
 					</script>
-					<script nonce="${nonce}">
-						// Track bundle loading state
-						window.__bundleLoaded = false;
-						window.__bundleLoadError = false;
-						window.__bundleError = null;
-						
-						// Add error handler for uncaught errors in the bundle
-						window.addEventListener('error', function(event) {
-							if (event.filename && event.filename.includes('tiptap-bundle')) {
-								console.error('Error in tiptap-bundle.js:', event.message, event.filename, event.lineno, event.colno);
-								window.__bundleError = {
-									message: event.message,
-									filename: event.filename,
-									lineno: event.lineno,
-									colno: event.colno
-								};
-								window.__bundleLoadError = true;
-							}
-						}, true);
-						
-						// Also catch unhandled promise rejections
-						window.addEventListener('unhandledrejection', function(event) {
-							console.error('Unhandled promise rejection (possibly from bundle):', event.reason);
-						});
-						
-						// Set up bundle load tracking BEFORE script is added
-						function setupBundleTracking() {
-							const bundleScript = document.querySelector('script[src*="tiptap-bundle"]');
-							if (bundleScript) {
-								// Check if script is already loaded (complete property)
-								if (bundleScript.complete || bundleScript.readyState === 'complete' || bundleScript.readyState === 'loaded') {
-									console.log('tiptap-bundle.js already loaded');
-									window.__bundleLoaded = true;
-									// Trigger init immediately if bundle is ready
-									if (window.tiptap && window.tiptap.Editor) {
-										setTimeout(function() {
-											if (window.initEditor) window.initEditor();
-										}, 0);
-									}
-								} else {
-									bundleScript.addEventListener('load', function() {
-										console.log('tiptap-bundle.js loaded successfully');
-										window.__bundleLoaded = true;
-										// Trigger init immediately when bundle loads
-										if (window.tiptap && window.tiptap.Editor) {
-											setTimeout(function() {
-												if (window.initEditor) window.initEditor();
-											}, 0);
-										}
-									});
-									bundleScript.addEventListener('error', function() {
-										console.error('Failed to load tiptap-bundle.js:', bundleScript.src);
-										window.__bundleLoadError = true;
-									});
-								}
-							}
-						}
-					</script>
 					<script nonce="${nonce}" src="${tiptapEditorJsUri}"></script>
-					<script nonce="${nonce}">
-						// Setup bundle tracking after script tag is added
-						setupBundleTracking();
-						// Also check immediately if bundle is already available
-						if (window.tiptap && window.tiptap.Editor) {
-							setTimeout(function() {
-								if (window.initEditor) window.initEditor();
-							}, 0);
-						}
-					</script>
 					<script nonce="${nonce}">
 						// Try to read VS Code theme CSS variables if available
 						// VS Code webviews may have access to some CSS variables

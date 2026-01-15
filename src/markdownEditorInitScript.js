@@ -565,15 +565,7 @@ function initEditor() {
 
 	const tiptap = getTiptapBundle();
 	if (!tiptap || !tiptap.Editor) {
-		if (!window.__typedownInitRetries) {
-			window.__typedownInitRetries = 0;
-		}
-		window.__typedownInitRetries += 1;
-		if (window.__typedownInitRetries < 40) {
-			setTimeout(initEditor, 50);
-		} else {
-			console.error('Failed to initialize Tiptap editor: bundle not available.');
-		}
+		console.error('Failed to initialize Tiptap editor: bundle not available.');
 		return;
 	}
 
@@ -725,8 +717,6 @@ function initEditor() {
 	vscode.postMessage({ type: 'initialized' });
 }
 
-window.initEditor = initEditor;
-
 window.addEventListener('message', (event) => {
 	const message = event.data;
 	switch (message.type) {
@@ -828,8 +818,5 @@ window.addEventListener('message', (event) => {
 	}
 });
 
-if (window.tiptap && window.tiptap.Editor) {
-	initEditor();
-} else {
-	initEditor();
-}
+// Initialize immediately - bundle is loaded synchronously before this script
+initEditor();
