@@ -2,7 +2,7 @@
 	"name": "typedown-markdown-editor",
 	"displayName": "Typedown - Markdown WYSIWYG Editor",
 	"description": "Markdown editor with WYSIWYG mode",
-	"version": "1.1.1",
+	"version": "1.1.2",
 	"publisher": "tarikkavaz",
 	"repository": {
 		"type": "git",
@@ -125,6 +125,24 @@
 					"default": null,
 					"description": "Font family for code blocks in the markdown editor. If not set, uses VS Code's editor.fontFamily setting.",
 					"markdownDescription": "Font family for code blocks in the markdown editor. If not set, uses VS Code's `editor.fontFamily` setting."
+				},
+				"typedown.codeBlock.tokenColors": {
+					"type": "object",
+					"default": {},
+					"description": "Override colors for code block syntax highlighting. By default, colors are extracted from your current VS Code theme. Use this to override specific token colors.",
+					"markdownDescription": "Override colors for code block syntax highlighting. By default, colors are **automatically extracted from your current VS Code theme**. Use this setting to override specific token colors if needed.\n\nExample:\n```json\n{\n  \"comment\": \"#6a9955\",\n  \"keyword\": \"#569cd6\",\n  \"string\": \"#ce9178\"\n}\n```\n\nAvailable token types: `comment`, `keyword`, `string`, `number`, `function`, `variable`, `operator`, `punctuation`, `property`, `tag`",
+					"properties": {
+						"comment": { "type": "string", "description": "Color for comments" },
+						"keyword": { "type": "string", "description": "Color for keywords (if, else, return, etc.)" },
+						"string": { "type": "string", "description": "Color for strings" },
+						"number": { "type": "string", "description": "Color for numbers and constants" },
+						"function": { "type": "string", "description": "Color for function names" },
+						"variable": { "type": "string", "description": "Color for variables" },
+						"operator": { "type": "string", "description": "Color for operators" },
+						"punctuation": { "type": "string", "description": "Color for punctuation" },
+						"property": { "type": "string", "description": "Color for object properties" },
+						"tag": { "type": "string", "description": "Color for HTML/XML tags" }
+					}
 				}
 			}
 		}

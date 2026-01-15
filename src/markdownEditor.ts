@@ -1,7 +1,14 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { extensionState } from './extension';
+import { extensionState, outputChannel } from './extension';
+
+// Helper to log to both console and output channel
+function log(...args: any[]) {
+	const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
+	console.log('[Typedown]', message);
+	outputChannel.appendLine(message);
+}
 
 export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 	public static register(context: vscode.ExtensionContext): vscode.Disposable {
@@ -35,6 +42,294 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		return 'var(--vscode-sideBar-foreground, var(--vscode-foreground))';
 	}
 
+	// Get theme kind: 'dark', 'light', or 'high-contrast'
+	private getThemeKind(): 'dark' | 'light' | 'high-contrast' | 'high-contrast-light' {
+		const theme = vscode.window.activeColorTheme;
+		switch (theme.kind) {
+			case vscode.ColorThemeKind.Light:
+				return 'light';
+			case vscode.ColorThemeKind.Dark:
+				return 'dark';
+			case vscode.ColorThemeKind.HighContrast:
+				return 'high-contrast';
+			case vscode.ColorThemeKind.HighContrastLight:
+				return 'high-contrast-light';
+			default:
+				return 'dark';
+		}
+	}
+
+	// Get custom token colors from user configuration (overrides)
+	private getUserTokenColorOverrides(): Record<string, string> {
+		const config = vscode.workspace.getConfiguration('typedown.codeBlock');
+		const tokenColors = config.get<Record<string, string>>('tokenColors') || {};
+		return tokenColors;
+	}
+
+	// Prism token to TextMate scope mappings (ordered by priority - first match wins)
+	// Each Prism token maps to an array of TextMate scopes to look for
+	private readonly prismToScopesMap: Record<string, string[]> = {
+		'comment': [
+			'comment', 'comment.line', 'comment.block', 
+			'punctuation.definition.comment'
+		],
+		'keyword': [
+			'keyword', 'keyword.control', 'keyword.other',
+			'storage', 'storage.type', 'storage.modifier'
+		],
+		'string': [
+			'string', 'string.quoted', 'string.template',
+			'string.quoted.double', 'string.quoted.single'
+		],
+		'number': [
+			'constant.numeric', 'constant.numeric.integer', 
+			'constant.numeric.float', 'constant.numeric.hex'
+		],
+		'boolean': [
+			'constant.language', 'constant.language.boolean',
+			'constant.language.null', 'constant.language.undefined'
+		],
+		'constant': [
+			'constant', 'constant.other', 'constant.character'
+		],
+		'function': [
+			'entity.name.function', 'support.function', 
+			'meta.function-call', 'variable.function'
+		],
+		'class-name': [
+			'entity.name.class', 'entity.name.type', 
+			'support.class', 'support.type', 'entity.other.inherited-class'
+		],
+		'variable': [
+			'variable', 'variable.other', 'variable.parameter', 
+			'variable.language', 'variable.other.readwrite'
+		],
+		'property': [
+			'variable.other.property', 'meta.property-name', 
+			'support.type.property-name', 'entity.name.tag.yaml',
+			'meta.object-literal.key'
+		],
+		'operator': [
+			'keyword.operator', 'punctuation.accessor',
+			'keyword.operator.assignment', 'keyword.operator.arithmetic'
+		],
+		'punctuation': [
+			'punctuation', 'meta.brace', 'punctuation.separator',
+			'punctuation.terminator', 'punctuation.definition.block'
+		],
+		'tag': [
+			'entity.name.tag', 'entity.name.tag.html', 
+			'entity.name.tag.xml', 'punctuation.definition.tag',
+			'meta.tag', 'support.class.component'
+		],
+		'attr-name': [
+			'entity.other.attribute-name', 'entity.other.attribute-name.html',
+			'entity.other.attribute-name.class', 'entity.other.attribute-name.id'
+		],
+		'attr-value': [
+			'string.quoted.double.html', 'string.quoted.single.html',
+			'meta.attribute-with-value'
+		],
+		'regex': [
+			'string.regexp', 'constant.regexp'
+		],
+	};
+
+	// Extract token colors from the current VS Code theme
+	private async getThemeTokenColors(): Promise<Record<string, string>> {
+		const result: Record<string, string> = {};
+		
+		try {
+			// Get the current theme name
+			const themeName = vscode.workspace.getConfiguration('workbench').get<string>('colorTheme');
+			if (!themeName) {
+				log('No theme name found in settings');
+				return result;
+			}
+			log('Looking for theme:', themeName);
+
+			// Normalize theme name for comparison
+			const normalizedThemeName = themeName.toLowerCase();
+
+			// Find the theme in all extensions
+			for (const ext of vscode.extensions.all) {
+				const contributes = ext.packageJSON?.contributes;
+				if (!contributes?.themes) {
+					continue;
+				}
+
+				for (const theme of contributes.themes) {
+					// Match by label or id (case-insensitive)
+					const themeLabel = (theme.label || '').toLowerCase();
+					const themeId = (theme.id || theme.label || '').toLowerCase();
+					
+					if (themeLabel === normalizedThemeName || 
+						themeId === normalizedThemeName ||
+						themeLabel.includes(normalizedThemeName) ||
+						normalizedThemeName.includes(themeLabel)) {
+						
+						const themePath = path.join(ext.extensionPath, theme.path);
+						log('Found theme at:', themePath);
+						log('Extension:', ext.id);
+						
+						const allTokenColors = await this.collectThemeTokenColors(themePath);
+						log('Collected', allTokenColors.length, 'token color rules');
+						
+						if (allTokenColors.length === 0) {
+							log('No token colors found, trying next match...');
+							continue;
+						}
+						
+						// Map collected colors to Prism tokens
+						for (const [prismToken, tmScopes] of Object.entries(this.prismToScopesMap)) {
+							const color = this.findColorForScopes(allTokenColors, tmScopes);
+							if (color) {
+								result[prismToken] = color;
+							}
+						}
+						
+						log('Mapped token colors:', result);
+						
+						// Apply user overrides on top
+						const overrides = this.getUserTokenColorOverrides();
+						Object.assign(result, overrides);
+						
+						return result;
+					}
+				}
+			}
+			log('Theme not found in extensions. Searched', vscode.extensions.all.length, 'extensions');
+		} catch (error) {
+			log('Error extracting theme token colors:', error);
+		}
+
+		return result;
+	}
+
+	// Collect all token colors from a theme file (including inherited themes)
+	private async collectThemeTokenColors(themePath: string): Promise<Array<{scopes: string[], color: string}>> {
+		const result: Array<{scopes: string[], color: string}> = [];
+		
+		try {
+			if (!fs.existsSync(themePath)) {
+				log('Theme file not found:', themePath);
+				return result;
+			}
+
+			const themeContent = fs.readFileSync(themePath, 'utf8');
+			// Remove JSON comments (// and /* */) that some themes use
+			const cleanedContent = themeContent
+				.replace(/\/\/.*$/gm, '') // Remove single-line comments
+				.replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
+			const theme = JSON.parse(cleanedContent);
+			
+			log('Theme file parsed, has include:', !!theme.include, 'has tokenColors:', !!theme.tokenColors);
+
+			// Handle theme inheritance (include) - parent colors first, so child can override
+			if (theme.include) {
+				const parentPath = path.join(path.dirname(themePath), theme.include);
+				log('Loading parent theme:', parentPath);
+				const parentColors = await this.collectThemeTokenColors(parentPath);
+				result.push(...parentColors);
+			}
+
+			// Parse tokenColors array
+			if (Array.isArray(theme.tokenColors)) {
+				log('Parsing', theme.tokenColors.length, 'token color rules');
+				for (const rule of theme.tokenColors) {
+					const foreground = rule.settings?.foreground;
+					if (!foreground) {
+						continue;
+					}
+
+					let scopes: string[] = [];
+					if (Array.isArray(rule.scope)) {
+						scopes = rule.scope;
+					} else if (typeof rule.scope === 'string') {
+						scopes = rule.scope.split(/,\s*/).map((s: string) => s.trim());
+					} else if (rule.scope === undefined && rule.settings) {
+						// Global/default style - applies to everything
+						scopes = ['source', 'text'];
+					}
+
+					if (scopes.length > 0) {
+						result.push({ scopes, color: foreground });
+					}
+				}
+			} else {
+				log('No tokenColors array in theme');
+			}
+		} catch (error) {
+			log('Error parsing theme file:', themePath, String(error));
+		}
+
+		return result;
+	}
+
+	// Find a color for any of the given scopes from the collected token colors
+	private findColorForScopes(tokenColors: Array<{scopes: string[], color: string}>, targetScopes: string[]): string | null {
+		// Priority scoring:
+		// - Exact match: 1000 points
+		// - Theme is more general (theme: "entity.name" matches target: "entity.name.tag"): 100 points
+		// - Theme is more specific (theme: "entity.name.tag.html" matches target: "entity.name.tag"): 10 points
+		// Later rules in tokenColors override earlier ones (so we process in order)
+		
+		let bestMatch: {color: string, score: number} | null = null;
+
+		for (const {scopes, color} of tokenColors) {
+			for (const themeScope of scopes) {
+				for (const targetScope of targetScopes) {
+					const score = this.scopeMatchScore(themeScope, targetScope);
+					if (score > 0) {
+						// Later rules with equal or better score override earlier ones
+						if (!bestMatch || score >= bestMatch.score) {
+							bestMatch = { color, score };
+						}
+					}
+				}
+			}
+		}
+
+		return bestMatch?.color || null;
+	}
+
+	// Calculate match score between theme scope and target scope
+	// Higher score = better match
+	private scopeMatchScore(themeScope: string, targetScope: string): number {
+		// Exact match is best
+		if (themeScope === targetScope) {
+			return 1000;
+		}
+		
+		// Theme is more general (theme: "entity.name" matches target: "entity.name.tag")
+		// This is a good match because we're looking for a specific thing and the theme
+		// provides a general color for that category
+		if (targetScope.startsWith(themeScope + '.')) {
+			return 100;
+		}
+		
+		// Theme is more specific (theme: "entity.name.tag.html" matches target: "entity.name.tag")
+		// This is acceptable but less preferred
+		// However, we need to be careful about language-specific scopes
+		if (themeScope.startsWith(targetScope + '.')) {
+			// Check if the extra specificity is just a language suffix (like .html, .js, .css)
+			// Those are good. But things like .xi, .unison are language-specific and less relevant.
+			const suffix = themeScope.slice(targetScope.length + 1);
+			const commonSuffixes = ['html', 'xml', 'js', 'ts', 'jsx', 'tsx', 'css', 'json', 'md', 'markdown', 'python', 'java', 'c', 'cpp', 'go', 'rust', 'bash', 'shell', 'sql'];
+			
+			// If suffix is a common language or starts with one, give it good score
+			const firstPart = suffix.split('.')[0];
+			if (commonSuffixes.includes(firstPart)) {
+				return 50;
+			}
+			
+			// Otherwise, very low score for obscure language-specific scopes
+			return 1;
+		}
+		
+		return 0;
+	}
+
 	// Called when our custom editor is opened.
 	public async resolveCustomTextEditor(
 		document: vscode.TextDocument,
@@ -52,10 +347,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const baseWebviewUri = webviewPanel.webview.asWebviewUri(baseFolderUri).toString();
 		webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, sidebarForegroundColor, baseWebviewUri);
 		
-		// Send theme color to webview
-		webviewPanel.webview.postMessage({
-			type: 'themeColorChanged',
-			sidebarForeground: sidebarForegroundColor,
+		// Send theme color and token colors to webview
+		const themeKind = this.getThemeKind();
+		this.getThemeTokenColors().then(tokenColors => {
+			log('Sending themeColorChanged to webview with', Object.keys(tokenColors).length, 'colors');
+			webviewPanel.webview.postMessage({
+				type: 'themeColorChanged',
+				sidebarForeground: sidebarForegroundColor,
+				themeKind: themeKind,
+				tokenColors: tokenColors,
+			});
 		});
 
 		// Update global state when a webview is focused.
@@ -208,9 +509,27 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			if (e.affectsConfiguration('workbench.colorTheme') || 
 				e.affectsConfiguration('workbench.colorCustomizations')) {
 				const sidebarForegroundColor = this.getSideBarForegroundColor();
-				webviewPanel.webview.postMessage({
-					type: 'themeColorChanged',
-					sidebarForeground: sidebarForegroundColor,
+				const themeKind = this.getThemeKind();
+				this.getThemeTokenColors().then(tokenColors => {
+					webviewPanel.webview.postMessage({
+						type: 'themeColorChanged',
+						sidebarForeground: sidebarForegroundColor,
+						themeKind: themeKind,
+						tokenColors: tokenColors,
+					});
+				});
+			}
+
+			// Update token colors when configuration changes
+			if (e.affectsConfiguration('typedown.codeBlock.tokenColors')) {
+				const themeKind = this.getThemeKind();
+				this.getThemeTokenColors().then(tokenColors => {
+					webviewPanel.webview.postMessage({
+						type: 'themeColorChanged',
+						sidebarForeground: this.getSideBarForegroundColor(),
+						themeKind: themeKind,
+						tokenColors: tokenColors,
+					});
 				});
 			}
 		});
@@ -218,9 +537,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		// Listen for theme changes
 		const onDidChangeActiveColorTheme = vscode.window.onDidChangeActiveColorTheme(() => {
 			const sidebarForegroundColor = this.getSideBarForegroundColor();
-			webviewPanel.webview.postMessage({
-				type: 'themeColorChanged',
-				sidebarForeground: sidebarForegroundColor,
+			const themeKind = this.getThemeKind();
+			this.getThemeTokenColors().then(tokenColors => {
+				webviewPanel.webview.postMessage({
+					type: 'themeColorChanged',
+					sidebarForeground: sidebarForegroundColor,
+					themeKind: themeKind,
+					tokenColors: tokenColors,
+				});
 			});
 		});
 
@@ -357,50 +681,94 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					<title>Markdown WYSIWYG Editor</title>
 					<style id="prism-user-theme"></style>
 					<style id="prism-vscode-theme">
-						/* VS Code theme-driven Prism tokens */
+						/* Token colors are set dynamically from VS Code theme via CSS variables */
+						/* Fallback to editor foreground color if not set */
+						:root {
+							--prism-comment: var(--vscode-editor-foreground);
+							--prism-keyword: var(--vscode-editor-foreground);
+							--prism-string: var(--vscode-editor-foreground);
+							--prism-number: var(--vscode-editor-foreground);
+							--prism-function: var(--vscode-editor-foreground);
+							--prism-variable: var(--vscode-editor-foreground);
+							--prism-operator: var(--vscode-editor-foreground);
+							--prism-punctuation: var(--vscode-editor-foreground);
+							--prism-property: var(--vscode-editor-foreground);
+							--prism-tag: var(--vscode-editor-foreground);
+							--prism-attr-name: var(--vscode-editor-foreground);
+							--prism-attr-value: var(--vscode-editor-foreground);
+							--prism-class-name: var(--vscode-editor-foreground);
+							--prism-constant: var(--vscode-editor-foreground);
+							--prism-boolean: var(--vscode-editor-foreground);
+							--prism-regex: var(--vscode-editor-foreground);
+						}
+						
+						/* Token styles using CSS variables - colors set by JS from theme */
 						.token.comment,
 						.token.prolog,
 						.token.doctype,
 						.token.cdata {
-							color: var(--vscode-descriptionForeground, var(--vscode-editor-foreground));
+							color: var(--prism-comment);
+							font-style: italic;
 						}
 						.token.punctuation {
-							color: var(--vscode-editor-foreground);
+							color: var(--prism-punctuation);
 						}
-						.token.property,
-						.token.tag,
-						.token.boolean,
-						.token.number,
-						.token.constant,
+						.token.property {
+							color: var(--prism-property);
+						}
+						.token.tag {
+							color: var(--prism-tag);
+						}
+						.token.boolean {
+							color: var(--prism-boolean);
+						}
+						.token.number {
+							color: var(--prism-number);
+						}
+						.token.constant {
+							color: var(--prism-constant);
+						}
 						.token.symbol,
 						.token.deleted {
-							color: var(--vscode-symbolIcon-numberForeground, var(--vscode-editor-foreground));
+							color: var(--prism-number);
 						}
 						.token.selector,
-						.token.attr-name,
+						.token.attr-name {
+							color: var(--prism-attr-name);
+						}
 						.token.string,
 						.token.char,
+						.token.attr-value,
 						.token.builtin,
 						.token.inserted {
-							color: var(--vscode-symbolIcon-stringForeground, var(--vscode-editor-foreground));
+							color: var(--prism-string);
 						}
 						.token.operator,
 						.token.entity,
-						.token.url,
-						.token.variable {
-							color: var(--vscode-symbolIcon-variableForeground, var(--vscode-editor-foreground));
+						.token.url {
+							color: var(--prism-operator);
 						}
-						.token.atrule,
-						.token.function,
+						.token.variable {
+							color: var(--prism-variable);
+						}
+						.token.atrule {
+							color: var(--prism-keyword);
+						}
+						.token.function {
+							color: var(--prism-function);
+						}
 						.token.class-name {
-							color: var(--vscode-symbolIcon-functionForeground, var(--vscode-editor-foreground));
+							color: var(--prism-class-name);
 						}
 						.token.keyword {
-							color: var(--vscode-symbolIcon-keywordForeground, var(--vscode-editor-foreground));
+							color: var(--prism-keyword);
 						}
-						.token.regex,
+						.token.regex {
+							color: var(--prism-regex);
+						}
 						.token.important {
-							color: var(--vscode-editorWarning-foreground, var(--vscode-editor-foreground));
+							color: var(--prism-keyword);
+							font-weight: bold;
 						}
 					</style>
 					

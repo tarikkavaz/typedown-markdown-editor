@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.0.0] - Initial Release
+## 1.0.0
 
 ### Added
 - WYSIWYG markdown editor powered by Tiptap
@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 - Full markdown feature support (tables, images, code blocks, links, etc.)
 
 
-## [1.0.1] - 2025-01-25
+## 1.0.1
 
 ### Added
 - Font and font size configuration options (`typedown.editor.fontFamily` and `typedown.editor.fontSize`)
@@ -29,7 +29,7 @@ All notable changes to this project will be documented in this file.
 - Toolbar alignment with content area
 - Font smoothing for better readability
 
-## [1.0.2] - 2025-01-25
+## 1.0.2
 
 ### Added
 - Keyboard handlers to exit code blocks using Arrow Down, Arrow Up, Enter, and Escape keys
@@ -47,7 +47,7 @@ All notable changes to this project will be documented in this file.
 - Dropdown menu scrolling - all options are accessible even in long lists
 - Table markdown conversion - tables now output correct markdown syntax with separator rows
 
-## [1.1.0] - 2025-01-15
+## 1.1.0
 
 ### Changed
 - Migrated from CKEditor to Tiptap for better performance and smaller bundle size
@@ -58,7 +58,12 @@ All notable changes to this project will be documented in this file.
 - Link editing dialog for inserting and editing links
 - Task list support with checkboxes
 
-## [1.1.1] - 2025-01-16
+## 1.1.1
 
 ### Added
 - Table insertion dialog that prompts for row and column counts
+
+## 1.1.2
+
+### Fixed
+- Code block syntax highlighting now automatically uses colors from your active VS Code theme.

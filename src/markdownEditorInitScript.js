@@ -1,6 +1,6 @@
-//@ts-check
+// @ts-nocheck
+/* eslint-disable no-undef */
 
-// eslint-disable-next-line no-undef
 const vscode = acquireVsCodeApi();
 window.vscode = vscode;
 
@@ -18,6 +18,50 @@ function getTiptapBundle() {
 		(typeof self !== 'undefined' && self.tiptap) ||
 		(typeof globalThis !== 'undefined' && globalThis.tiptap) ||
 		null;
+}
+
+// Map of user-friendly token names to CSS variable names
+const tokenToCssVar = {
+	comment: '--prism-comment',
+	keyword: '--prism-keyword',
+	string: '--prism-string',
+	number: '--prism-number',
+	function: '--prism-function',
+	variable: '--prism-variable',
+	operator: '--prism-operator',
+	punctuation: '--prism-punctuation',
+	property: '--prism-property',
+	tag: '--prism-tag',
+	'attr-name': '--prism-attr-name',
+	'attr-value': '--prism-attr-value',
+	'class-name': '--prism-class-name',
+	constant: '--prism-constant',
+	boolean: '--prism-boolean',
+	regex: '--prism-regex',
+};
+
+// Apply token colors from theme extraction
+function applyTokenColors(tokenColors) {
+	console.log('[Typedown Webview] applyTokenColors called with:', tokenColors);
+	
+	if (!tokenColors || typeof tokenColors !== 'object') {
+		console.log('[Typedown Webview] No token colors to apply');
+		return;
+	}
+	
+	const root = document.documentElement;
+	
+	for (const [token, color] of Object.entries(tokenColors)) {
+		if (!color || typeof color !== 'string') {
+			continue;
+		}
+		
+		const cssVar = tokenToCssVar[token];
+		if (cssVar) {
+			console.log('[Typedown Webview] Setting', cssVar, '=', color);
+			root.style.setProperty(cssVar, color);
+		}
+	}
 }
 
 function resolveImageSrc(src) {
@@ -862,6 +906,8 @@ window.addEventListener('message', (event) => {
 			break;
 		}
 		case 'themeColorChanged': {
+			console.log('[Typedown Webview] themeColorChanged received:', message);
+			
 			const sidebarForeground = message.sidebarForeground;
 			if (sidebarForeground) {
 				const root = document.documentElement;
@@ -869,6 +915,22 @@ window.addEventListener('message', (event) => {
 				root.style.setProperty('--typedown-theme-hr-border', sidebarForeground);
 				root.style.setProperty('--typedown-theme-table-border', sidebarForeground);
 				root.style.setProperty('--typedown-theme-active-border', sidebarForeground);
+			}
+
+			// Apply theme kind for Prism color defaults
+			const themeKind = message.themeKind;
+			if (themeKind) {
+				console.log('[Typedown Webview] Setting theme kind:', themeKind);
+				document.body.setAttribute('data-theme', themeKind);
+			}
+
+			// Apply token colors from theme
+			const tokenColors = message.tokenColors;
+			console.log('[Typedown Webview] Token colors received:', tokenColors);
+			if (tokenColors && typeof tokenColors === 'object' && Object.keys(tokenColors).length > 0) {
+				applyTokenColors(tokenColors);
+			} else {
+				console.log('[Typedown Webview] No token colors in message');
 			}
 			break;
 		}
