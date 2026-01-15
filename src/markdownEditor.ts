@@ -367,26 +367,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							box-sizing: border-box;
 						}
 						
-						/* Fixed toolbar wrapper - will be created by JavaScript */
-						.typedown-toolbar-wrapper {
+						/* Fixed toolbar - applied by JavaScript */
+						.toastui-editor-defaultUI-toolbar.typedown-fixed-toolbar {
 							position: fixed !important;
 							top: 0 !important;
 							left: 0 !important;
 							z-index: 1000 !important;
-							display: flex !important;
-							justify-content: flex-start !important;
-							background-color: transparent !important;
-							pointer-events: none !important;
-							max-width: ${editorWidth} !important;
-							box-sizing: border-box !important;
-							overflow: visible !important;
-							clip: none !important;
-							clip-path: none !important;
-						}
-						
-						.typedown-toolbar-wrapper .toastui-editor-defaultUI-toolbar {
-							pointer-events: all !important;
-							position: relative !important;
 							overflow: visible !important;
 							clip: none !important;
 							clip-path: none !important;
@@ -418,17 +404,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							flex-shrink: 0 !important;
 						}
 						
-						/* When toolbar is moved to fixed wrapper */
-						.typedown-toolbar-wrapper .toastui-editor-defaultUI-toolbar {
-							position: relative !important;
-							top: auto !important;
-							z-index: auto !important;
-							overflow: visible !important;
-						}
-						
 						/* Ensure dropdowns and popups are visible when toolbar is fixed */
-						.typedown-toolbar-wrapper .toastui-editor-dropdown-toolbar,
-						.typedown-toolbar-wrapper .toastui-editor-popup {
+						.toastui-editor-defaultUI-toolbar.typedown-fixed-toolbar .toastui-editor-dropdown-toolbar,
+						.toastui-editor-defaultUI-toolbar.typedown-fixed-toolbar .toastui-editor-popup {
 							position: absolute !important;
 							z-index: 1001 !important;
 							overflow: visible !important;
@@ -440,7 +418,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.toastui-editor-dropdown-toolbar,
 						.toastui-editor-popup,
 						.toastui-editor-context-menu {
-							position: fixed !important;
 							z-index: 1001 !important;
 							overflow: visible !important;
 							clip: none !important;
@@ -465,7 +442,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							opacity: 1 !important;
 							box-shadow: 0 2px 4px 0 rgba(0, 0, 0, 0.08) !important;
 							z-index: 1002 !important;
-							position: fixed !important;
 							max-height: none !important;
 						}
 						
@@ -639,7 +615,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							background-color: var(--typedown-theme-dropdown-bg, var(--vscode-dropdown-background)) !important;
 							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
 							z-index: 1001 !important;
-							position: fixed !important;
 							overflow: visible !important;
 						}
 						
@@ -673,14 +648,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border)) !important;
 							color: var(--typedown-theme-dropdown-fg, var(--vscode-dropdown-foreground)) !important;
 							z-index: 1001 !important;
-							position: fixed !important;
 							overflow: visible !important;
 						}
 						
 						/* Context menu styles */
 						.toastui-editor-context-menu {
 							z-index: 1001 !important;
-							position: fixed !important;
 							overflow: visible !important;
 						}
 						
@@ -976,7 +949,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							}
 						}
 					</script>
-					<script nonce="${nonce}" src="${tuiEditorJsUri}" onload="window.__bundleLoaded = true; if (window.toastui && window.toastui.Editor && window.initEditor) { setTimeout(window.initEditor, 0); }" onerror="window.__bundleLoadError = true;"></script>
+					<script nonce="${nonce}" src="${tuiEditorJsUri}"></script>
 					<script nonce="${nonce}">
 						// Setup bundle tracking after script tag is added
 						setupBundleTracking();

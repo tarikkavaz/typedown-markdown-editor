@@ -145,6 +145,34 @@ function setEditorContent(/** @type {string} */ text) {
 function setupEditorHandlers() {
 	if (!editor) return;
 	
+	const isDropdownVisible = (dropdown) => {
+		const computedStyle = window.getComputedStyle(dropdown);
+		return computedStyle.display !== 'none' &&
+			computedStyle.visibility !== 'hidden' &&
+			computedStyle.opacity !== '0';
+	};
+	
+	const closeHeadingDropdownIfVisible = () => {
+		const headingDropdown = document.querySelector('.toastui-editor-popup-add-heading, .toastui-editor-popup');
+		if (!headingDropdown || !isDropdownVisible(headingDropdown)) {
+			return;
+		}
+		
+		const hasHeadingItems = headingDropdown.querySelector('h1, h2, h3, h4, h5, h6');
+		if (!hasHeadingItems) {
+			return;
+		}
+		
+		headingDropdown.style.display = 'none';
+		headingDropdown.style.visibility = 'hidden';
+		headingDropdown.style.opacity = '0';
+	};
+	
+	const isAnyPopupVisible = () => {
+		const dropdowns = document.querySelectorAll('.toastui-editor-dropdown-toolbar, .toastui-editor-popup, .toastui-editor-context-menu');
+		return Array.from(dropdowns).some((dropdown) => isDropdownVisible(dropdown));
+	};
+	
 	// Add listener for user modifying text in the editor
 	editor.on('change', () => {
 		// This happens when the event was triggered by documentChanged event rather than user input
@@ -163,6 +191,39 @@ function setupEditorHandlers() {
 		editor.dirty = true;
 	});
 	
+	// Close heading dropdown after applying a heading
+	if (typeof closeHeadingDropdownIfVisible === 'function') {
+		editor.on('change', () => {
+			setTimeout(() => {
+				closeHeadingDropdownIfVisible();
+			}, 0);
+		});
+	}
+	
+	// Close heading popup when a heading item is selected
+	const closeHeadingPopupOnSelect = (event) => {
+		const popup = event.target.closest('.toastui-editor-popup-add-heading');
+		if (!popup || !isDropdownVisible(popup)) {
+			return;
+		}
+		
+		const selection = event.target.closest('li, h1, h2, h3, h4, h5, h6, button');
+		if (!selection) {
+			return;
+		}
+		
+		setTimeout(() => {
+			popup.classList.remove('show');
+			popup.style.display = 'none';
+			popup.style.visibility = 'hidden';
+			popup.style.opacity = '0';
+		}, 0);
+	};
+	
+	document.addEventListener('click', closeHeadingPopupOnSelect, true);
+	
+	// Close heading popup immediately after selection
+	
 		// Move toolbar outside editor container and make it fixed at top
 		// Defer this to not block initial content rendering - use double RAF for lower priority
 		requestAnimationFrame(() => {
@@ -170,18 +231,8 @@ function setupEditorHandlers() {
 		const toolbar = document.querySelector('.toastui-editor-defaultUI-toolbar');
 		const editor = document.querySelector('#editor');
 		
-		if (toolbar && editor && !document.querySelector('.typedown-toolbar-wrapper')) {
-			// Create wrapper for fixed toolbar
-			const toolbarWrapper = document.createElement('div');
-			toolbarWrapper.className = 'typedown-toolbar-wrapper';
-			
-			// Move the actual toolbar element (not clone) to preserve event handlers
-			toolbarWrapper.appendChild(toolbar);
-			
-			// Insert wrapper at the beginning of body
-			document.body.insertBefore(toolbarWrapper, document.body.firstChild);
-			
-			// Add padding class to body
+		if (toolbar && editor && !toolbar.classList.contains('typedown-fixed-toolbar')) {
+			toolbar.classList.add('typedown-fixed-toolbar');
 			document.body.classList.add('has-fixed-toolbar');
 			
 			// Update width, max-width, and left position to match editor
@@ -191,51 +242,101 @@ function setupEditorHandlers() {
 				const editorComputedStyle = window.getComputedStyle(editor);
 				const editorMaxWidth = editorComputedStyle.maxWidth;
 				
-				// Set wrapper width and max-width to match editor
-				toolbarWrapper.style.width = editorWidth + 'px';
+				toolbar.style.width = editorWidth + 'px';
 				if (editorMaxWidth && editorMaxWidth !== 'none') {
-					toolbarWrapper.style.maxWidth = editorMaxWidth;
+					toolbar.style.maxWidth = editorMaxWidth;
+				} else {
+					toolbar.style.maxWidth = '';
 				}
 				
-				// Align toolbar wrapper's left edge with editor's left edge
-				toolbarWrapper.style.left = editorRect.left + 'px';
+				// Align toolbar's left edge with editor's left edge
+				toolbar.style.left = editorRect.left + 'px';
 			};
 			
 			// Track the last clicked button to help identify which button triggered a dropdown
 			let lastClickedButton = null;
+			let customHeadingDropdown = null;
 			
 			// Track button clicks for dropdown positioning
 			toolbar.addEventListener('click', (e) => {
 				const button = e.target.closest('button');
 				if (button) {
+					if (isAnyPopupVisible()) {
+						return;
+					}
 					lastClickedButton = button;
 				}
 			}, true);
 			
+			
 			// Ensure dropdowns and popups are visible and have proper z-index
+			const positionDropdownFromButton = (dropdown, button) => {
+				if (!button) return;
+				const buttonRect = button.getBoundingClientRect();
+				const dropdownRect = dropdown.getBoundingClientRect();
+				const spacing = 6;
+				
+				let top = buttonRect.bottom + spacing;
+				let left = buttonRect.left;
+				
+				const maxLeft = Math.max(8, window.innerWidth - dropdownRect.width - 8);
+				left = Math.max(8, Math.min(left, maxLeft));
+				
+				const maxTop = Math.max(8, window.innerHeight - dropdownRect.height - 8);
+				if (top > maxTop) {
+					top = Math.max(8, buttonRect.top - dropdownRect.height - spacing);
+				}
+				
+				dropdown.style.position = 'fixed';
+				dropdown.style.top = `${Math.round(top)}px`;
+				dropdown.style.left = `${Math.round(left)}px`;
+			};
+			
 			const ensureDropdownsVisible = () => {
 				// Find all dropdowns, popups, and context menus
 				const dropdowns = document.querySelectorAll('.toastui-editor-dropdown-toolbar, .toastui-editor-popup, .toastui-editor-context-menu');
 				
 				dropdowns.forEach(dropdown => {
-					// Check if dropdown is actually visible
-					const computedStyle = window.getComputedStyle(dropdown);
-					const isVisible = computedStyle.display !== 'none' && 
-									  computedStyle.visibility !== 'hidden' && 
-									  computedStyle.opacity !== '0';
+					const isVisible = isDropdownVisible(dropdown);
+					const wasVisible = dropdown.dataset.typedownWasVisible === 'true';
+					
+					if (!isVisible && wasVisible) {
+						dropdown.dataset.typedownWasVisible = 'false';
+					}
 					
 					// Only adjust visible dropdowns
 					if (isVisible) {
+						// Auto-close heading dropdown after selection
+						if (dropdown.classList.contains('toastui-editor-popup-add-heading')) {
+							if (!dropdown.dataset.typedownCloseBound) {
+								dropdown.dataset.typedownCloseBound = 'true';
+								const closeHeadingDropdown = () => {
+									setTimeout(() => {
+										dropdown.style.display = 'none';
+										dropdown.style.visibility = 'hidden';
+										dropdown.style.opacity = '0';
+									}, 0);
+								};
+								dropdown.addEventListener('click', closeHeadingDropdown, true);
+							}
+						}
+						
 						// Set high z-index to ensure dropdowns appear above toolbar
 						dropdown.style.zIndex = '1001';
 						
 						// Ensure overflow is visible
 						dropdown.style.overflow = 'visible';
 						
-						// Ensure position is fixed (TUI Editor should handle positioning)
-						if (computedStyle.position !== 'fixed') {
-							dropdown.style.position = 'fixed';
+						// Only position when dropdown just became visible
+						if (!wasVisible && lastClickedButton &&
+							(dropdown.classList.contains('toastui-editor-dropdown-toolbar') ||
+								(dropdown.classList.contains('toastui-editor-popup') && !dropdown.classList.contains('toastui-editor-popup-add-heading')))) {
+							positionDropdownFromButton(dropdown, lastClickedButton);
 						}
+						
+						dropdown.dataset.typedownWasVisible = 'true';
+						
+						// Otherwise, let TUI Editor manage positioning
 					}
 				});
 			};
