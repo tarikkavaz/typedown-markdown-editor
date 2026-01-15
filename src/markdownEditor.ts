@@ -1,14 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { extensionState, outputChannel } from './extension';
-
-// Helper to log to both console and output channel
-function log(...args: any[]) {
-	const message = args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' ');
-	console.log('[Typedown]', message);
-	outputChannel.appendLine(message);
-}
+import { extensionState } from './extension';
 
 export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 	public static register(context: vscode.ExtensionContext): vscode.Disposable {
@@ -143,10 +136,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			// Get the current theme name
 			const themeName = vscode.workspace.getConfiguration('workbench').get<string>('colorTheme');
 			if (!themeName) {
-				log('No theme name found in settings');
 				return result;
 			}
-			log('Looking for theme:', themeName);
 
 			// Normalize theme name for comparison
 			const normalizedThemeName = themeName.toLowerCase();
@@ -169,14 +160,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						normalizedThemeName.includes(themeLabel)) {
 						
 						const themePath = path.join(ext.extensionPath, theme.path);
-						log('Found theme at:', themePath);
-						log('Extension:', ext.id);
-						
 						const allTokenColors = await this.collectThemeTokenColors(themePath);
-						log('Collected', allTokenColors.length, 'token color rules');
 						
 						if (allTokenColors.length === 0) {
-							log('No token colors found, trying next match...');
 							continue;
 						}
 						
@@ -188,8 +174,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							}
 						}
 						
-						log('Mapped token colors:', result);
-						
 						// Apply user overrides on top
 						const overrides = this.getUserTokenColorOverrides();
 						Object.assign(result, overrides);
@@ -198,9 +182,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					}
 				}
 			}
-			log('Theme not found in extensions. Searched', vscode.extensions.all.length, 'extensions');
 		} catch (error) {
-			log('Error extracting theme token colors:', error);
+			console.error('[Typedown] Error extracting theme token colors:', error);
 		}
 
 		return result;
@@ -212,7 +195,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		
 		try {
 			if (!fs.existsSync(themePath)) {
-				log('Theme file not found:', themePath);
 				return result;
 			}
 
@@ -222,20 +204,16 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				.replace(/\/\/.*$/gm, '') // Remove single-line comments
 				.replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
 			const theme = JSON.parse(cleanedContent);
-			
-			log('Theme file parsed, has include:', !!theme.include, 'has tokenColors:', !!theme.tokenColors);
 
 			// Handle theme inheritance (include) - parent colors first, so child can override
 			if (theme.include) {
 				const parentPath = path.join(path.dirname(themePath), theme.include);
-				log('Loading parent theme:', parentPath);
 				const parentColors = await this.collectThemeTokenColors(parentPath);
 				result.push(...parentColors);
 			}
 
 			// Parse tokenColors array
 			if (Array.isArray(theme.tokenColors)) {
-				log('Parsing', theme.tokenColors.length, 'token color rules');
 				for (const rule of theme.tokenColors) {
 					const foreground = rule.settings?.foreground;
 					if (!foreground) {
@@ -256,11 +234,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						result.push({ scopes, color: foreground });
 					}
 				}
-			} else {
-				log('No tokenColors array in theme');
 			}
 		} catch (error) {
-			log('Error parsing theme file:', themePath, String(error));
+			// Theme parsing failed silently
 		}
 
 		return result;
@@ -350,7 +326,6 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		// Send theme color and token colors to webview
 		const themeKind = this.getThemeKind();
 		this.getThemeTokenColors().then(tokenColors => {
-			log('Sending themeColorChanged to webview with', Object.keys(tokenColors).length, 'colors');
 			webviewPanel.webview.postMessage({
 				type: 'themeColorChanged',
 				sidebarForeground: sidebarForegroundColor,

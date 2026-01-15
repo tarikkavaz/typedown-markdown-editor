@@ -1,9 +1,6 @@
 import * as vscode from 'vscode';
 import { MarkdownEditorProvider } from './markdownEditor';
 
-// Output channel for debugging
-export const outputChannel = vscode.window.createOutputChannel('Typedown');
-
 export const extensionState: {
 	activeDocument: vscode.TextDocument | undefined;
 	activeWebviewPanel: vscode.WebviewPanel | undefined;
@@ -13,8 +10,6 @@ export const extensionState: {
 };
 
 export function activate(context: vscode.ExtensionContext) {
-	console.log('Typedown extension activated!');
-	outputChannel.appendLine('Typedown extension activated!');
 
 	// Initialize the context to false
 	vscode.commands.executeCommand('setContext', 'typedown.editorIsActive', false);

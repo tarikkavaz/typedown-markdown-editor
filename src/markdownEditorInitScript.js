@@ -42,10 +42,7 @@ const tokenToCssVar = {
 
 // Apply token colors from theme extraction
 function applyTokenColors(tokenColors) {
-	console.log('[Typedown Webview] applyTokenColors called with:', tokenColors);
-	
 	if (!tokenColors || typeof tokenColors !== 'object') {
-		console.log('[Typedown Webview] No token colors to apply');
 		return;
 	}
 	
@@ -58,7 +55,6 @@ function applyTokenColors(tokenColors) {
 		
 		const cssVar = tokenToCssVar[token];
 		if (cssVar) {
-			console.log('[Typedown Webview] Setting', cssVar, '=', color);
 			root.style.setProperty(cssVar, color);
 		}
 	}
@@ -906,8 +902,6 @@ window.addEventListener('message', (event) => {
 			break;
 		}
 		case 'themeColorChanged': {
-			console.log('[Typedown Webview] themeColorChanged received:', message);
-			
 			const sidebarForeground = message.sidebarForeground;
 			if (sidebarForeground) {
 				const root = document.documentElement;
@@ -917,20 +911,16 @@ window.addEventListener('message', (event) => {
 				root.style.setProperty('--typedown-theme-active-border', sidebarForeground);
 			}
 
-			// Apply theme kind for Prism color defaults
+			// Apply theme kind
 			const themeKind = message.themeKind;
 			if (themeKind) {
-				console.log('[Typedown Webview] Setting theme kind:', themeKind);
 				document.body.setAttribute('data-theme', themeKind);
 			}
 
 			// Apply token colors from theme
 			const tokenColors = message.tokenColors;
-			console.log('[Typedown Webview] Token colors received:', tokenColors);
 			if (tokenColors && typeof tokenColors === 'object' && Object.keys(tokenColors).length > 0) {
 				applyTokenColors(tokenColors);
-			} else {
-				console.log('[Typedown Webview] No token colors in message');
 			}
 			break;
 		}
