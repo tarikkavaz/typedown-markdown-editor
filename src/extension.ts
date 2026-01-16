@@ -9,53 +9,10 @@ export const extensionState: {
 	activeWebviewPanel: undefined,
 };
 
-/**
- * Syncs the workbench.editorAssociations setting based on typedown.openByDefault.
- * When openByDefault is true, markdown files open in WYSIWYG mode by default.
- */
-async function syncEditorAssociations() {
-	const config = vscode.workspace.getConfiguration('typedown');
-	const openByDefault = config.get<boolean>('openByDefault', false);
-	
-	const workbenchConfig = vscode.workspace.getConfiguration('workbench');
-	const currentAssociations = workbenchConfig.get<Record<string, string>>('editorAssociations') || {};
-	
-	// Create a copy to modify
-	const newAssociations = { ...currentAssociations };
-	
-	if (openByDefault) {
-		// Set Typedown as the default editor for .md files
-		newAssociations['*.md'] = MarkdownEditorProvider.viewType;
-	} else {
-		// Remove or set to default
-		if (newAssociations['*.md'] === MarkdownEditorProvider.viewType) {
-			newAssociations['*.md'] = 'default';
-		}
-	}
-	
-	// Only update if there's a change
-	if (JSON.stringify(currentAssociations) !== JSON.stringify(newAssociations)) {
-		await workbenchConfig.update('editorAssociations', newAssociations, vscode.ConfigurationTarget.Global);
-		console.log('[Typedown] Updated editorAssociations:', newAssociations);
-	}
-}
-
 export function activate(context: vscode.ExtensionContext) {
 
 	// Initialize the context to false
 	vscode.commands.executeCommand('setContext', 'typedown.editorIsActive', false);
-
-	// Sync editor associations on activation
-	syncEditorAssociations();
-
-	// Listen for changes to typedown.openByDefault setting
-	context.subscriptions.push(
-		vscode.workspace.onDidChangeConfiguration((e) => {
-			if (e.affectsConfiguration('typedown.openByDefault')) {
-				syncEditorAssociations();
-			}
-		})
-	);
 
 	// Register our custom editor provider
 	context.subscriptions.push(MarkdownEditorProvider.register(context));

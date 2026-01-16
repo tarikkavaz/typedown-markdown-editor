@@ -2,7 +2,7 @@
 	"name": "typedown-markdown-editor",
 	"displayName": "Typedown - Markdown WYSIWYG Editor",
 	"description": "Markdown editor with WYSIWYG mode",
-	"version": "1.1.4",
+	"version": "1.1.5",
 	"publisher": "tarikkavaz",
 	"repository": {
 		"type": "git",
@@ -140,8 +140,8 @@
 				"typedown.openByDefault": {
 					"type": "boolean",
 					"default": false,
-					"description": "When enabled, markdown files open in WYSIWYG mode by default. Use context menu to open in text editor.",
-					"markdownDescription": "When enabled, markdown files open in **WYSIWYG mode** by default (regular click). Use the context menu to open in the standard text editor."
+					"description": "When enabled, shows instructions for setting WYSIWYG as the default editor. The editor is always available via \"Open With...\" or context menu.",
+					"markdownDescription": "When enabled, shows instructions for configuring `workbench.editorAssociations` to make WYSIWYG the default editor for markdown files.\n\n**Note:** The extension does NOT automatically set `workbench.editorAssociations` to avoid race conditions and startup issues. To set WYSIWYG as default, manually add this to your settings:\n\n```json\n\"workbench.editorAssociations\": {\n  \"*.md\": \"typedown.markdownEditor\"\n}\n```\n\nAlternatively, use \"Open With...\" from the context menu to choose the editor for individual files."
 				}
 			}
 		}

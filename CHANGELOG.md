@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.1.5
+
+### Fixed
+
+- Removed automatic `workbench.editorAssociations` management to eliminate race conditions and startup issues
+- Markdown files now open reliably without extension activation conflicts
+- When `typedown.openByDefault` is disabled, files open in the default text editor as expected
+
+### Changed
+
+- `typedown.openByDefault` setting no longer automatically manages `workbench.editorAssociations` - users can manually configure it if desired
+- Updated `typedown.openByDefault` setting description to explain manual configuration
+- The editor is always available via "Open With..." or context menu thanks to the selector in package.json
+
 ## 1.1.4
 
 ### Fixed
