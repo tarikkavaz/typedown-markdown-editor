@@ -5,7 +5,9 @@ A powerful WYSIWYG (What You See Is What You Get) editor for Markdown files in V
 ## Features
 
 - **WYSIWYG Editing**: Edit Markdown files with a visual, rich-text editor
-- **Syntax Highlighting**: PrismJS-powered code block highlighting for 16+ languages
+- **Syntax Highlighting**: Shiki-powered code block highlighting with VS Code theme matching
+- **Math/LaTeX Support**: Render mathematical equations with KaTeX (`$...$` for inline, `$$...$$` for block)
+- **Default Editor Option**: Configure WYSIWYG as the default editor for markdown files
 - **Context Menu Access**: Right-click on `.md` files in the explorer to open in WYSIWYG mode
 - **Cross-Platform**: Works on Windows, macOS, and Linux
 - **Full Markdown Support**: All standard markdown features including tables, images, code blocks, links, task lists, and more
@@ -142,6 +144,24 @@ Set the maximum width of the editor content area:
 
 Default is `91ch`. Accepts any valid CSS width value (e.g., `800px`, `100%`).
 
+### Open WYSIWYG by Default
+
+Make WYSIWYG mode the default when opening markdown files:
+
+```json
+{
+  "typedown.openByDefault": true
+}
+```
+
+When enabled:
+- **Regular click** on `.md` files opens them in WYSIWYG mode
+- **Context menu** shows "Open in Text Editor" option
+
+When disabled (default):
+- **Regular click** opens files in standard text editor
+- **Context menu** shows "Open in WYSIWYG mode" option
+
 ### Example Configuration
 
 Here's a complete example configuration:
@@ -151,7 +171,8 @@ Here's a complete example configuration:
   "typedown.editor.fontFamily": "'Fira Code', monospace",
   "typedown.editor.fontSize": 16,
   "typedown.editor.codeBlockfontFamily": "'JetBrains Mono', monospace",
-  "typedown.editor.width": "100ch"
+  "typedown.editor.width": "100ch",
+  "typedown.openByDefault": true
 }
 ```
 
@@ -220,6 +241,15 @@ The extension uses Tiptap and supports standard Markdown features including:
 
 The editor includes syntax highlighting for:
 JavaScript, TypeScript, JSX, TSX, Python, Java, C, C++, Go, Rust, HTML, CSS, JSON, YAML, SQL, Bash/Shell, Markdown, and Diff.
+
+### How do I insert math equations?
+
+You can insert math in two ways:
+
+1. **Toolbar buttons**: Click the `x²` button for inline math or `∑` for block math
+2. **Markdown syntax**: Type `$E=mc^2$` for inline math or `$$\sum_{i=1}^{n} x_i$$` on its own line for block math
+
+Double-click on any math equation to edit it.
 
 ### Does the extension work with unsaved files?
 
