@@ -52,91 +52,13 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		}
 	}
 
-	// Get custom token colors from user configuration (overrides)
-	private getUserTokenColorOverrides(): Record<string, string> {
-		const config = vscode.workspace.getConfiguration('typedown.codeBlock');
-		const tokenColors = config.get<Record<string, string>>('tokenColors') || {};
-		return tokenColors;
-	}
-
-	// Prism token to TextMate scope mappings (ordered by priority - first match wins)
-	// Each Prism token maps to an array of TextMate scopes to look for
-	private readonly prismToScopesMap: Record<string, string[]> = {
-		'comment': [
-			'comment', 'comment.line', 'comment.block', 
-			'punctuation.definition.comment'
-		],
-		'keyword': [
-			'keyword', 'keyword.control', 'keyword.other',
-			'storage', 'storage.type', 'storage.modifier'
-		],
-		'string': [
-			'string', 'string.quoted', 'string.template',
-			'string.quoted.double', 'string.quoted.single'
-		],
-		'number': [
-			'constant.numeric', 'constant.numeric.integer', 
-			'constant.numeric.float', 'constant.numeric.hex'
-		],
-		'boolean': [
-			'constant.language', 'constant.language.boolean',
-			'constant.language.null', 'constant.language.undefined'
-		],
-		'constant': [
-			'constant', 'constant.other', 'constant.character'
-		],
-		'function': [
-			'entity.name.function', 'support.function', 
-			'meta.function-call', 'variable.function'
-		],
-		'class-name': [
-			'entity.name.class', 'entity.name.type', 
-			'support.class', 'support.type', 'entity.other.inherited-class'
-		],
-		'variable': [
-			'variable', 'variable.other', 'variable.parameter', 
-			'variable.language', 'variable.other.readwrite'
-		],
-		'property': [
-			'variable.other.property', 'meta.property-name', 
-			'support.type.property-name', 'entity.name.tag.yaml',
-			'meta.object-literal.key'
-		],
-		'operator': [
-			'keyword.operator', 'punctuation.accessor',
-			'keyword.operator.assignment', 'keyword.operator.arithmetic'
-		],
-		'punctuation': [
-			'punctuation', 'meta.brace', 'punctuation.separator',
-			'punctuation.terminator', 'punctuation.definition.block'
-		],
-		'tag': [
-			'entity.name.tag', 'entity.name.tag.html', 
-			'entity.name.tag.xml', 'punctuation.definition.tag',
-			'meta.tag', 'support.class.component'
-		],
-		'attr-name': [
-			'entity.other.attribute-name', 'entity.other.attribute-name.html',
-			'entity.other.attribute-name.class', 'entity.other.attribute-name.id'
-		],
-		'attr-value': [
-			'string.quoted.double.html', 'string.quoted.single.html',
-			'meta.attribute-with-value'
-		],
-		'regex': [
-			'string.regexp', 'constant.regexp'
-		],
-	};
-
-	// Extract token colors from the current VS Code theme
-	private async getThemeTokenColors(): Promise<Record<string, string>> {
-		const result: Record<string, string> = {};
-		
+	// Extract the full VS Code theme for Shiki (Shiki uses the same format as VS Code themes)
+	private async getVSCodeThemeForShiki(): Promise<object | null> {
 		try {
 			// Get the current theme name
 			const themeName = vscode.workspace.getConfiguration('workbench').get<string>('colorTheme');
 			if (!themeName) {
-				return result;
+				return null;
 			}
 
 			// Normalize theme name for comparison
@@ -160,42 +82,26 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						normalizedThemeName.includes(themeLabel)) {
 						
 						const themePath = path.join(ext.extensionPath, theme.path);
-						const allTokenColors = await this.collectThemeTokenColors(themePath);
+						const fullTheme = await this.loadFullTheme(themePath, themeName);
 						
-						if (allTokenColors.length === 0) {
-							continue;
+						if (fullTheme) {
+							return fullTheme;
 						}
-						
-						// Map collected colors to Prism tokens
-						for (const [prismToken, tmScopes] of Object.entries(this.prismToScopesMap)) {
-							const color = this.findColorForScopes(allTokenColors, tmScopes);
-							if (color) {
-								result[prismToken] = color;
-							}
-						}
-						
-						// Apply user overrides on top
-						const overrides = this.getUserTokenColorOverrides();
-						Object.assign(result, overrides);
-						
-						return result;
 					}
 				}
 			}
 		} catch (error) {
-			console.error('[Typedown] Error extracting theme token colors:', error);
+			console.error('[Typedown] Error loading VS Code theme for Shiki:', error);
 		}
 
-		return result;
+		return null;
 	}
 
-	// Collect all token colors from a theme file (including inherited themes)
-	private async collectThemeTokenColors(themePath: string): Promise<Array<{scopes: string[], color: string}>> {
-		const result: Array<{scopes: string[], color: string}> = [];
-		
+	// Load full theme JSON (including inherited themes) for Shiki
+	private async loadFullTheme(themePath: string, themeName: string): Promise<object | null> {
 		try {
 			if (!fs.existsSync(themePath)) {
-				return result;
+				return null;
 			}
 
 			const themeContent = fs.readFileSync(themePath, 'utf8');
@@ -205,105 +111,40 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				.replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
 			const theme = JSON.parse(cleanedContent);
 
-			// Handle theme inheritance (include) - parent colors first, so child can override
+			// Handle theme inheritance (include) - merge parent theme first
 			if (theme.include) {
 				const parentPath = path.join(path.dirname(themePath), theme.include);
-				const parentColors = await this.collectThemeTokenColors(parentPath);
-				result.push(...parentColors);
-			}
-
-			// Parse tokenColors array
-			if (Array.isArray(theme.tokenColors)) {
-				for (const rule of theme.tokenColors) {
-					const foreground = rule.settings?.foreground;
-					if (!foreground) {
-						continue;
-					}
-
-					let scopes: string[] = [];
-					if (Array.isArray(rule.scope)) {
-						scopes = rule.scope;
-					} else if (typeof rule.scope === 'string') {
-						scopes = rule.scope.split(/,\s*/).map((s: string) => s.trim());
-					} else if (rule.scope === undefined && rule.settings) {
-						// Global/default style - applies to everything
-						scopes = ['source', 'text'];
-					}
-
-					if (scopes.length > 0) {
-						result.push({ scopes, color: foreground });
-					}
-				}
-			}
-		} catch (error) {
-			// Theme parsing failed silently
-		}
-
-		return result;
-	}
-
-	// Find a color for any of the given scopes from the collected token colors
-	private findColorForScopes(tokenColors: Array<{scopes: string[], color: string}>, targetScopes: string[]): string | null {
-		// Priority scoring:
-		// - Exact match: 1000 points
-		// - Theme is more general (theme: "entity.name" matches target: "entity.name.tag"): 100 points
-		// - Theme is more specific (theme: "entity.name.tag.html" matches target: "entity.name.tag"): 10 points
-		// Later rules in tokenColors override earlier ones (so we process in order)
-		
-		let bestMatch: {color: string, score: number} | null = null;
-
-		for (const {scopes, color} of tokenColors) {
-			for (const themeScope of scopes) {
-				for (const targetScope of targetScopes) {
-					const score = this.scopeMatchScore(themeScope, targetScope);
-					if (score > 0) {
-						// Later rules with equal or better score override earlier ones
-						if (!bestMatch || score >= bestMatch.score) {
-							bestMatch = { color, score };
+				const parentTheme = await this.loadFullTheme(parentPath, themeName);
+				
+				if (parentTheme) {
+					// Merge parent and child themes
+					const merged = {
+						...parentTheme,
+						...theme,
+						name: themeName,
+						// Merge tokenColors arrays (child overrides parent)
+						tokenColors: [
+							...((parentTheme as any).tokenColors || []),
+							...(theme.tokenColors || [])
+						],
+						// Merge colors objects (child overrides parent)
+						colors: {
+							...((parentTheme as any).colors || {}),
+							...(theme.colors || {})
 						}
-					}
+					};
+					delete merged.include;
+					return merged;
 				}
 			}
-		}
 
-		return bestMatch?.color || null;
-	}
-
-	// Calculate match score between theme scope and target scope
-	// Higher score = better match
-	private scopeMatchScore(themeScope: string, targetScope: string): number {
-		// Exact match is best
-		if (themeScope === targetScope) {
-			return 1000;
+			// Ensure the theme has a name
+			theme.name = theme.name || themeName;
+			return theme;
+		} catch (error) {
+			console.error('[Typedown] Error parsing theme file:', error);
+			return null;
 		}
-		
-		// Theme is more general (theme: "entity.name" matches target: "entity.name.tag")
-		// This is a good match because we're looking for a specific thing and the theme
-		// provides a general color for that category
-		if (targetScope.startsWith(themeScope + '.')) {
-			return 100;
-		}
-		
-		// Theme is more specific (theme: "entity.name.tag.html" matches target: "entity.name.tag")
-		// This is acceptable but less preferred
-		// However, we need to be careful about language-specific scopes
-		if (themeScope.startsWith(targetScope + '.')) {
-			// Check if the extra specificity is just a language suffix (like .html, .js, .css)
-			// Those are good. But things like .xi, .unison are language-specific and less relevant.
-			const suffix = themeScope.slice(targetScope.length + 1);
-			const commonSuffixes = ['html', 'xml', 'js', 'ts', 'jsx', 'tsx', 'css', 'json', 'md', 'markdown', 'python', 'java', 'c', 'cpp', 'go', 'rust', 'bash', 'shell', 'sql'];
-			
-			// If suffix is a common language or starts with one, give it good score
-			const firstPart = suffix.split('.')[0];
-			if (commonSuffixes.includes(firstPart)) {
-				return 50;
-			}
-			
-			// Otherwise, very low score for obscure language-specific scopes
-			return 1;
-		}
-		
-		return 0;
 	}
 
 	// Called when our custom editor is opened.
@@ -323,14 +164,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const baseWebviewUri = webviewPanel.webview.asWebviewUri(baseFolderUri).toString();
 		webviewPanel.webview.html = this.getHtmlForWebview(webviewPanel.webview, sidebarForegroundColor, baseWebviewUri);
 		
-		// Send theme color and token colors to webview
+		// Send theme color and full VS Code theme to webview for Shiki
 		const themeKind = this.getThemeKind();
-		this.getThemeTokenColors().then(tokenColors => {
+		this.getVSCodeThemeForShiki().then(shikiTheme => {
 			webviewPanel.webview.postMessage({
 				type: 'themeColorChanged',
 				sidebarForeground: sidebarForegroundColor,
 				themeKind: themeKind,
-				tokenColors: tokenColors,
+				shikiTheme: shikiTheme,
 			});
 		});
 
@@ -479,31 +320,19 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				});
 			}
 
+
 			
-			// Update theme colors when theme changes
+			// Update theme when theme changes
 			if (e.affectsConfiguration('workbench.colorTheme') || 
 				e.affectsConfiguration('workbench.colorCustomizations')) {
 				const sidebarForegroundColor = this.getSideBarForegroundColor();
 				const themeKind = this.getThemeKind();
-				this.getThemeTokenColors().then(tokenColors => {
+				this.getVSCodeThemeForShiki().then(shikiTheme => {
 					webviewPanel.webview.postMessage({
 						type: 'themeColorChanged',
 						sidebarForeground: sidebarForegroundColor,
 						themeKind: themeKind,
-						tokenColors: tokenColors,
-					});
-				});
-			}
-
-			// Update token colors when configuration changes
-			if (e.affectsConfiguration('typedown.codeBlock.tokenColors')) {
-				const themeKind = this.getThemeKind();
-				this.getThemeTokenColors().then(tokenColors => {
-					webviewPanel.webview.postMessage({
-						type: 'themeColorChanged',
-						sidebarForeground: this.getSideBarForegroundColor(),
-						themeKind: themeKind,
-						tokenColors: tokenColors,
+						shikiTheme: shikiTheme,
 					});
 				});
 			}
@@ -513,12 +342,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const onDidChangeActiveColorTheme = vscode.window.onDidChangeActiveColorTheme(() => {
 			const sidebarForegroundColor = this.getSideBarForegroundColor();
 			const themeKind = this.getThemeKind();
-			this.getThemeTokenColors().then(tokenColors => {
+			this.getVSCodeThemeForShiki().then(shikiTheme => {
 				webviewPanel.webview.postMessage({
 					type: 'themeColorChanged',
 					sidebarForeground: sidebarForegroundColor,
 					themeKind: themeKind,
-					tokenColors: tokenColors,
+					shikiTheme: shikiTheme,
 				});
 			});
 		});
@@ -654,98 +483,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 					<meta charset="UTF-8" />
 					<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 					<title>Markdown WYSIWYG Editor</title>
-					<style id="prism-user-theme"></style>
-					<style id="prism-vscode-theme">
-						/* Token colors are set dynamically from VS Code theme via CSS variables */
-						/* Fallback to editor foreground color if not set */
-						:root {
-							--prism-comment: var(--vscode-editor-foreground);
-							--prism-keyword: var(--vscode-editor-foreground);
-							--prism-string: var(--vscode-editor-foreground);
-							--prism-number: var(--vscode-editor-foreground);
-							--prism-function: var(--vscode-editor-foreground);
-							--prism-variable: var(--vscode-editor-foreground);
-							--prism-operator: var(--vscode-editor-foreground);
-							--prism-punctuation: var(--vscode-editor-foreground);
-							--prism-property: var(--vscode-editor-foreground);
-							--prism-tag: var(--vscode-editor-foreground);
-							--prism-attr-name: var(--vscode-editor-foreground);
-							--prism-attr-value: var(--vscode-editor-foreground);
-							--prism-class-name: var(--vscode-editor-foreground);
-							--prism-constant: var(--vscode-editor-foreground);
-							--prism-boolean: var(--vscode-editor-foreground);
-							--prism-regex: var(--vscode-editor-foreground);
-						}
-						
-						/* Token styles using CSS variables - colors set by JS from theme */
-						.token.comment,
-						.token.prolog,
-						.token.doctype,
-						.token.cdata {
-							color: var(--prism-comment);
-							font-style: italic;
-						}
-						.token.punctuation {
-							color: var(--prism-punctuation);
-						}
-						.token.property {
-							color: var(--prism-property);
-						}
-						.token.tag {
-							color: var(--prism-tag);
-						}
-						.token.boolean {
-							color: var(--prism-boolean);
-						}
-						.token.number {
-							color: var(--prism-number);
-						}
-						.token.constant {
-							color: var(--prism-constant);
-						}
-						.token.symbol,
-						.token.deleted {
-							color: var(--prism-number);
-						}
-						.token.selector,
-						.token.attr-name {
-							color: var(--prism-attr-name);
-						}
-						.token.string,
-						.token.char,
-						.token.attr-value,
-						.token.builtin,
-						.token.inserted {
-							color: var(--prism-string);
-						}
-						.token.operator,
-						.token.entity,
-						.token.url {
-							color: var(--prism-operator);
-						}
-						.token.variable {
-							color: var(--prism-variable);
-						}
-						.token.atrule {
-							color: var(--prism-keyword);
-						}
-						.token.function {
-							color: var(--prism-function);
-						}
-						.token.class-name {
-							color: var(--prism-class-name);
-						}
-						.token.keyword {
-							color: var(--prism-keyword);
-						}
-						.token.regex {
-							color: var(--prism-regex);
-						}
-						.token.important {
-							color: var(--prism-keyword);
-							font-weight: bold;
-						}
-					</style>
+					<!-- Shiki applies syntax highlighting via inline styles -->
 					
 					<style>
 						:root {
@@ -1083,43 +821,163 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							border-color: var(--typedown-theme-dropdown-border, var(--vscode-dropdown-border));
 						}
 						
-						/* Prism background overrides */
-						:not(pre) > code[class*="language-"],
-						pre[class*="language-"],
-						.ProseMirror pre[class*="language-"],
-						.ProseMirror code[class*="language-"] {
-							background: transparent !important;
-							background-color: transparent !important;
-						}
 					</style>
 					<style id="font-size-style"></style>
-					<style id="prism-theme-override">
-						/* Final override for PrismJS - ensure transparent backgrounds and remove inner borders */
-						.ProseMirror pre[class*="language-"],
-						.ProseMirror code[class*="language-"] {
-							background: transparent !important;
-							background-color: transparent !important;
-							text-shadow: none !important;
-							border: none !important;
-							padding: 0 !important;
-							margin: 0 !important;
+					<style id="katex-style">
+						/* KaTeX inline styles */
+						.typedown-math {
+							cursor: pointer;
 						}
 						
-						/* Remove PrismJS default padding from pre elements inside code blocks */
-						.ProseMirror pre[class*="language-"] {
-							padding: 0 !important;
-							margin: 0 !important;
+						.typedown-math:hover {
+							background-color: color-mix(in srgb, var(--vscode-focusBorder, #007acc) 15%, transparent);
+							border-radius: 3px;
 						}
 						
-						/* Ensure unhighlighted code blocks are visible and matches highlighted blocks */
-						.ProseMirror pre:not([class*="language-"]) code,
-						.ProseMirror pre code:not([class*="language-"]) {
-							color: var(--vscode-editor-foreground) !important;
-							background: transparent !important;
-							border: none !important;
+						.typedown-math-inline {
+							display: inline-block;
+							vertical-align: middle;
+							padding: 0 2px;
+						}
+						
+						.typedown-math-block {
+							display: block;
+							text-align: center;
+							padding: 1em 0;
+							margin: 0.5em 0;
+							overflow-x: auto;
+						}
+						
+						.katex-error {
+							color: var(--vscode-errorForeground, #f44336);
+							font-family: monospace;
+							font-size: 0.9em;
+							padding: 2px 4px;
+							background-color: color-mix(in srgb, var(--vscode-errorForeground, #f44336) 10%, transparent);
+							border-radius: 3px;
+						}
+						
+						/* KaTeX core styles - minimal subset for rendering */
+						.katex {
+							font: normal 1.21em KaTeX_Main, Times New Roman, serif;
+							line-height: 1.2;
+							text-indent: 0;
+							text-rendering: auto;
+						}
+						
+						.katex * {
+							-ms-high-contrast-adjust: none !important;
+						}
+						
+						.katex .katex-html {
+							display: inline-block;
+						}
+						
+						.katex .base {
+							position: relative;
+							display: inline-block;
+							white-space: nowrap;
+							width: min-content;
+						}
+						
+						.katex .strut {
+							display: inline-block;
+						}
+						
+						.katex .mord,
+						.katex .mop,
+						.katex .mbin,
+						.katex .mrel,
+						.katex .mopen,
+						.katex .mclose,
+						.katex .mpunct,
+						.katex .minner {
+							display: inline-block;
+						}
+						
+						.katex .mfrac {
+							display: inline-block;
+							text-align: center;
+						}
+						
+						.katex .mfrac > .vlist-t {
+							display: inline-table;
+							table-layout: fixed;
+						}
+						
+						.katex .mfrac > .vlist-t > .vlist-r {
+							display: table-row;
+						}
+						
+						.katex .mfrac > .vlist-t > .vlist-r > .vlist > span {
+							display: table-cell;
+						}
+						
+						.katex .frac-line {
+							display: inline-block;
+							width: 100%;
+							border-bottom-style: solid;
+						}
+						
+						.katex .msupsub {
+							text-align: left;
+						}
+						
+						.katex .msub,
+						.katex .msup,
+						.katex .msubsup {
+							display: inline-block;
+						}
+						
+						.katex .vlist-t,
+						.katex .vlist-r,
+						.katex .vlist-s,
+						.katex .vlist {
+							display: inline-block;
+						}
+						
+						.katex .sqrt {
+							display: inline-block;
+						}
+						
+						.katex .sqrt > .root {
+							margin-left: 0.27777778em;
+							margin-right: -0.55555556em;
+						}
+						
+						.katex .op-symbol {
+							position: relative;
+						}
+						
+						.katex .op-limits > .vlist-t {
+							text-align: center;
+						}
+						
+						.katex .accent > .vlist-t {
+							text-align: center;
+						}
+						
+						.katex .mtable .vertical-separator {
+							display: inline-block;
+							min-width: 1px;
+						}
+						
+						.katex .mtable .arraycolsep {
+							display: inline-block;
+						}
+						
+						.katex .mtable .col-align-c > .vlist-t {
+							text-align: center;
+						}
+						
+						.katex .mtable .col-align-l > .vlist-t {
+							text-align: left;
+						}
+						
+						.katex .mtable .col-align-r > .vlist-t {
+							text-align: right;
 						}
 					</style>
-					<style id="prism-vscode-theme"></style>
 				</head>
 				<body>
 					<div id="toolbar" class="typedown-toolbar"></div>
