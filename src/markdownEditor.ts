@@ -58,7 +58,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			// Get the current theme name
 			const themeName = vscode.workspace.getConfiguration('workbench').get<string>('colorTheme');
 			if (!themeName) {
-				return null;
+				return this.getFallbackShikiTheme(this.getThemeKind());
 			}
 
 			// Normalize theme name for comparison
@@ -85,6 +85,9 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						const fullTheme = await this.loadFullTheme(themePath, themeName);
 						
 						if (fullTheme) {
+							if (!this.hasTokenColors(fullTheme)) {
+								return this.getFallbackShikiTheme(this.getThemeKind());
+							}
 							return fullTheme;
 						}
 					}
@@ -94,7 +97,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			console.error('[Typedown] Error loading VS Code theme for Shiki:', error);
 		}
 
-		return null;
+		return this.getFallbackShikiTheme(this.getThemeKind());
 	}
 
 	// Load full theme JSON (including inherited themes) for Shiki
@@ -105,10 +108,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			}
 
 			const themeContent = fs.readFileSync(themePath, 'utf8');
-			// Remove JSON comments (// and /* */) that some themes use
-			const cleanedContent = themeContent
-				.replace(/\/\/.*$/gm, '') // Remove single-line comments
-				.replace(/\/\*[\s\S]*?\*\//g, ''); // Remove multi-line comments
+			const cleanedContent = this.cleanThemeJson(themeContent);
 			const theme = JSON.parse(cleanedContent);
 
 			// Handle theme inheritance (include) - merge parent theme first
@@ -145,6 +145,167 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			console.error('[Typedown] Error parsing theme file:', error);
 			return null;
 		}
+	}
+
+	private cleanThemeJson(raw: string): string {
+		const withoutComments = this.stripJsonComments(raw);
+		return this.removeTrailingCommas(withoutComments);
+	}
+
+	private stripJsonComments(raw: string): string {
+		let output = '';
+		let inString = false;
+		let stringChar = '';
+		let escaped = false;
+		let inLineComment = false;
+		let inBlockComment = false;
+
+		for (let i = 0; i < raw.length; i += 1) {
+			const char = raw[i];
+			const nextChar = i + 1 < raw.length ? raw[i + 1] : '';
+
+			if (inLineComment) {
+				if (char === '\n') {
+					inLineComment = false;
+					output += char;
+				}
+				continue;
+			}
+
+			if (inBlockComment) {
+				if (char === '*' && nextChar === '/') {
+					inBlockComment = false;
+					i += 1;
+				}
+				continue;
+			}
+
+			if (inString) {
+				output += char;
+				if (escaped) {
+					escaped = false;
+				} else if (char === '\\') {
+					escaped = true;
+				} else if (char === stringChar) {
+					inString = false;
+					stringChar = '';
+				}
+				continue;
+			}
+
+			if (char === '/' && nextChar === '/') {
+				inLineComment = true;
+				i += 1;
+				continue;
+			}
+
+			if (char === '/' && nextChar === '*') {
+				inBlockComment = true;
+				i += 1;
+				continue;
+			}
+
+			if (char === '"' || char === '\'') {
+				inString = true;
+				stringChar = char;
+				output += char;
+				continue;
+			}
+
+			output += char;
+		}
+
+		return output;
+	}
+
+	private removeTrailingCommas(raw: string): string {
+		let output = '';
+		let inString = false;
+		let stringChar = '';
+		let escaped = false;
+
+		for (let i = 0; i < raw.length; i += 1) {
+			const char = raw[i];
+
+			if (inString) {
+				output += char;
+				if (escaped) {
+					escaped = false;
+				} else if (char === '\\') {
+					escaped = true;
+				} else if (char === stringChar) {
+					inString = false;
+					stringChar = '';
+				}
+				continue;
+			}
+
+			if (char === '"' || char === '\'') {
+				inString = true;
+				stringChar = char;
+				output += char;
+				continue;
+			}
+
+			if (char === ',') {
+				let j = i + 1;
+				while (j < raw.length && /\s/.test(raw[j])) {
+					j += 1;
+				}
+				const nextNonWhitespace = j < raw.length ? raw[j] : '';
+				if (nextNonWhitespace === '}' || nextNonWhitespace === ']') {
+					continue;
+				}
+			}
+
+			output += char;
+		}
+
+		return output;
+	}
+
+	private hasTokenColors(theme: any): boolean {
+		if (!theme || typeof theme !== 'object') {
+			return false;
+		}
+		if (Array.isArray(theme.tokenColors) && theme.tokenColors.length > 0) {
+			return true;
+		}
+		if (Array.isArray(theme.settings) && theme.settings.length > 0) {
+			return true;
+		}
+		return false;
+	}
+
+	private getFallbackShikiTheme(themeKind: string): object {
+		const isLight = themeKind === 'light' || themeKind === 'high-contrast-light';
+		const baseForeground = isLight ? '#333333' : '#d4d4d4';
+		const defaultColors = {
+			comment: isLight ? '#6a9955' : '#6a9955',
+			string: isLight ? '#a31515' : '#ce9178',
+			keyword: isLight ? '#0000ff' : '#c586c0',
+			number: isLight ? '#098658' : '#b5cea8',
+			function: isLight ? '#795e26' : '#dcdcaa',
+			type: isLight ? '#267f99' : '#4ec9b0',
+			variable: isLight ? '#001080' : '#9cdcfe',
+			punctuation: baseForeground,
+		};
+
+		return {
+			name: isLight ? 'typedown-fallback-light' : 'typedown-fallback-dark',
+			type: isLight ? 'light' : 'dark',
+			colors: {},
+			tokenColors: [
+				{ scope: ['comment'], settings: { foreground: defaultColors.comment } },
+				{ scope: ['string'], settings: { foreground: defaultColors.string } },
+				{ scope: ['keyword', 'storage', 'modifier'], settings: { foreground: defaultColors.keyword } },
+				{ scope: ['constant.numeric'], settings: { foreground: defaultColors.number } },
+				{ scope: ['entity.name.function'], settings: { foreground: defaultColors.function } },
+				{ scope: ['entity.name.type', 'support.type'], settings: { foreground: defaultColors.type } },
+				{ scope: ['variable', 'identifier'], settings: { foreground: defaultColors.variable } },
+				{ scope: ['punctuation', 'meta.brace'], settings: { foreground: defaultColors.punctuation } },
+			],
+		};
 	}
 
 	// Called when our custom editor is opened.
@@ -299,7 +460,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 				const typedownConfig = vscode.workspace.getConfiguration('typedown.editor');
 				const editorConfig = vscode.workspace.getConfiguration('editor');
 				
-				const fontSize = typedownConfig.get<number>('fontSize') ?? editorConfig.get<number>('fontSize', 14);
+				const typedownFontSize = typedownConfig.get<number>('fontSize');
+				const fontSize = (typeof typedownFontSize === 'number' && !isNaN(typedownFontSize)) 
+					? typedownFontSize 
+					: editorConfig.get<number>('fontSize', 14);
 				// Get fontFamily for regular text - typedown config takes precedence, otherwise use editor config
 				let fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
 				if (!fontFamily || fontFamily.trim() === '') {
@@ -457,7 +621,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 		const typedownConfig = vscode.workspace.getConfiguration('typedown.editor');
 		const editorConfig = vscode.workspace.getConfiguration('editor');
 		
-		const fontSize = typedownConfig.get<number>('fontSize') ?? editorConfig.get<number>('fontSize', 14);
+		const typedownFontSize = typedownConfig.get<number>('fontSize');
+		const fontSize = (typeof typedownFontSize === 'number' && !isNaN(typedownFontSize)) 
+			? typedownFontSize 
+			: editorConfig.get<number>('fontSize', 14);
 		// Get fontFamily for regular text - typedown config takes precedence, otherwise use editor config
 		let fontFamily = typedownConfig.get<string>('fontFamily') ?? editorConfig.get<string>('fontFamily', '');
 		if (!fontFamily || fontFamily.trim() === '') {

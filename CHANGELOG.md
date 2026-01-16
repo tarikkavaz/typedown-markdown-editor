@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## 1.1.6
+
+### Fixed
+
+- Font size setting (`typedown.editor.fontSize`) is now optional - users can leave it empty and it will use VS Code's default `editor.fontSize` setting without validation errors
+- Improved code block highlighting when themes lack token colors or fail to load by adding a fallback Shiki theme
+- Theme JSON loading now supports JSONC-style comments and trailing commas
+
+### Changed
+
+- Settings UI descriptions now clarify what happens when values are left blank
+
 ## 1.1.5
 
 ### Fixed

@@ -89,6 +89,14 @@ Opens the active markdown file in WYSIWYG mode, or switches back to the default 
 
 You can customize the editor appearance and behavior through VS Code settings.
 
+### Settings UI
+
+You can change Typedown settings in the UI without editing `settings.json`:
+
+1. Open Settings (`Cmd+,` on macOS or `Ctrl+,` on Windows/Linux)
+2. Search for "Typedown"
+3. Update the fields in the settings UI
+
 ### Font Family
 
 Set a custom font family for the markdown editor:
@@ -107,7 +115,7 @@ Or use multiple fonts with fallbacks:
 }
 ```
 
-If not set, the editor will use VS Code's `editor.fontFamily` setting.
+Leave blank to use VS Code's `editor.fontFamily` setting.
 
 ### Font Size
 
@@ -119,11 +127,12 @@ Set a custom font size for the markdown editor:
 }
 ```
 
-If not set, the editor will use VS Code's `editor.fontSize` setting (default: 14).
+Leave blank to use VS Code's `editor.fontSize` setting (default: 14).
 
 ### Code Block Font Family
 
 Set a custom font family for code blocks:
+Leave blank to use VS Code's `editor.fontFamily` setting.
 
 ```json
 {

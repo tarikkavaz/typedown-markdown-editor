@@ -2,7 +2,7 @@
 	"name": "typedown-markdown-editor",
 	"displayName": "Typedown - Markdown WYSIWYG Editor",
 	"description": "Markdown editor with WYSIWYG mode",
-	"version": "1.1.5",
+	"version": "1.1.6",
 	"publisher": "tarikkavaz",
 	"repository": {
 		"type": "git",
@@ -117,26 +117,26 @@
 				"typedown.editor.fontFamily": {
 					"type": "string",
 					"default": null,
-					"description": "Font family for the markdown editor. If not set, uses VS Code's editor.fontFamily setting.",
-					"markdownDescription": "Font family for the markdown editor. If not set, uses VS Code's `editor.fontFamily` setting."
+					"description": "Font family for the markdown editor. Leave blank to use VS Code's editor.fontFamily.",
+					"markdownDescription": "Font family for the markdown editor. Leave blank to use VS Code's `editor.fontFamily`."
 				},
 				"typedown.editor.fontSize": {
 					"type": "number",
 					"default": null,
-					"description": "Font size for the markdown editor. If not set, uses VS Code's editor.fontSize setting.",
-					"markdownDescription": "Font size for the markdown editor. If not set, uses VS Code's `editor.fontSize` setting."
+					"description": "Font size for the markdown editor. Leave blank to use VS Code's editor.fontSize.",
+					"markdownDescription": "Font size for the markdown editor. Leave blank to use VS Code's `editor.fontSize`."
 				},
 				"typedown.editor.width": {
 					"type": "string",
 					"default": "91ch",
 					"description": "Maximum width of the markdown editor content area.",
-					"markdownDescription": "Maximum width of the markdown editor content area (e.g., '91ch', '120ch', '800px')."
+					"markdownDescription": "Maximum width of the markdown editor content area. Use any valid CSS width (e.g., `91ch`, `120ch`, `800px`)."
 				},
 				"typedown.editor.codeBlockfontFamily": {
 					"type": "string",
 					"default": null,
-					"description": "Font family for code blocks in the markdown editor. If not set, uses VS Code's editor.fontFamily setting.",
-					"markdownDescription": "Font family for code blocks in the markdown editor. If not set, uses VS Code's `editor.fontFamily` setting."
+					"description": "Font family for code blocks in the markdown editor. Leave blank to use VS Code's editor.fontFamily.",
+					"markdownDescription": "Font family for code blocks in the markdown editor. Leave blank to use VS Code's `editor.fontFamily`."
 				},
 				"typedown.openByDefault": {
 					"type": "boolean",
