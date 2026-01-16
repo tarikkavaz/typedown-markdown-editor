@@ -9,6 +9,41 @@ export const extensionState: {
 	activeWebviewPanel: undefined,
 };
 
+/**
+ * Syncs workbench.editorAssociations based on typedown.openByDefault setting.
+ * With priority: "option" in package.json, we need to set this to make WYSIWYG the default.
+ */
+async function syncEditorAssociations() {
+	try {
+		const config = vscode.workspace.getConfiguration('typedown');
+		const openByDefault = config.get<boolean>('openByDefault', false);
+		
+		const workbenchConfig = vscode.workspace.getConfiguration('workbench');
+		const currentAssociations = workbenchConfig.get<Record<string, string>>('editorAssociations') || {};
+		const newAssociations = { ...currentAssociations };
+		
+		if (openByDefault) {
+			// Set Typedown as the default editor for .md files
+			if (newAssociations['*.md'] !== MarkdownEditorProvider.viewType) {
+				newAssociations['*.md'] = MarkdownEditorProvider.viewType;
+			}
+		} else {
+			// Remove our association - let VS Code use default text editor
+			if (newAssociations['*.md'] === MarkdownEditorProvider.viewType) {
+				delete newAssociations['*.md'];
+			}
+		}
+		
+		// Only update if there's a change
+		if (JSON.stringify(currentAssociations) !== JSON.stringify(newAssociations)) {
+			await workbenchConfig.update('editorAssociations', newAssociations, vscode.ConfigurationTarget.Global);
+			console.log('[Typedown] Updated editorAssociations:', newAssociations);
+		}
+	} catch (error) {
+		console.error('[Typedown] Error syncing editorAssociations:', error);
+	}
+}
+
 export function activate(context: vscode.ExtensionContext) {
 
 	// Initialize the context to false
@@ -16,6 +51,18 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// Register our custom editor provider
 	context.subscriptions.push(MarkdownEditorProvider.register(context));
+
+	// Sync editor associations based on openByDefault setting
+	syncEditorAssociations();
+
+	// Listen for changes to typedown.openByDefault setting
+	context.subscriptions.push(
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration('typedown.openByDefault')) {
+				syncEditorAssociations();
+			}
+		})
+	);
 
 	// Helper method to register commands and push subscription
 	function registerCommand(command: string, callback: (...args: any[]) => any) {

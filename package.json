@@ -34,6 +34,7 @@
 			{
 				"viewType": "typedown.markdownEditor",
 				"displayName": "Markdown WYSIWYG Editor",
+				"priority": "option",
 				"selector": [
 					{
 						"filenamePattern": "*.md"
