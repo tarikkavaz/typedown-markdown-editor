@@ -6,7 +6,6 @@ A powerful WYSIWYG (What You See Is What You Get) editor for Markdown files in V
 
 - **WYSIWYG Editing**: Edit Markdown files with a visual, rich-text editor
 - **Syntax Highlighting**: Shiki-powered code block highlighting with VS Code theme matching
-- **Math/LaTeX Support**: Render mathematical equations with KaTeX (`$...$` for inline, `$$...$$` for block)
 - **Default Editor Option**: Configure WYSIWYG as the default editor for markdown files
 - **Context Menu Access**: Right-click on `.md` files in the explorer to open in WYSIWYG mode
 - **Cross-Platform**: Works on Windows, macOS, and Linux
@@ -240,16 +239,7 @@ The extension uses Tiptap and supports standard Markdown features including:
 ### What programming languages are supported for syntax highlighting?
 
 The editor includes syntax highlighting for:
-JavaScript, TypeScript, JSX, TSX, Python, Java, C, C++, Go, Rust, HTML, CSS, JSON, YAML, SQL, Bash/Shell, Markdown, and Diff.
-
-### How do I insert math equations?
-
-You can insert math in two ways:
-
-1. **Toolbar buttons**: Click the `x²` button for inline math or `∑` for block math
-2. **Markdown syntax**: Type `$E=mc^2$` for inline math or `$$\sum_{i=1}^{n} x_i$$` on its own line for block math
-
-Double-click on any math equation to edit it.
+JavaScript, TypeScript, Python, HTML, CSS, JSON, YAML, SQL, Bash/Shell, and Markdown.
 
 ### Does the extension work with unsaved files?
 

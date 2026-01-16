@@ -12,7 +12,6 @@ let lastMarkdown = '';
 let imageBaseUri = typeof window !== 'undefined' && window.__typedownBaseUri ? window.__typedownBaseUri : '';
 let linkDialog = null;
 let tableDialog = null;
-let mathDialog = null;
 
 // Shiki highlighter instance (created asynchronously)
 let shikiHighlighter = null;
@@ -169,60 +168,6 @@ function normalizeMarkdownImages(markdown) {
 	return normalized;
 }
 
-// Convert math nodes to markdown format
-function serializeMathToMarkdown(markdown) {
-	if (!markdown) {
-		return markdown;
-	}
-	
-	// The math nodes will be in HTML format in the markdown output
-	// Convert inline math spans to $...$ format
-	let result = markdown;
-	
-	// Match inline math: <span data-type="inline-math" data-latex="...">...</span>
-	result = result.replace(/<span[^>]*data-type="inline-math"[^>]*data-latex="([^"]*)"[^>]*>.*?<\/span>/gi, (match, latex) => {
-		return `$${latex}$`;
-	});
-	
-	// Match math blocks: <div data-type="math-block" data-latex="...">...</div>
-	result = result.replace(/<div[^>]*data-type="math-block"[^>]*data-latex="([^"]*)"[^>]*>.*?<\/div>/gi, (match, latex) => {
-		return `$$${latex}$$`;
-	});
-	
-	return result;
-}
-
-// Parse markdown math syntax to editor format
-function parseMathFromMarkdown(markdown) {
-	if (!markdown) {
-		return markdown;
-	}
-	
-	let result = markdown;
-	
-	// Convert block math $$...$$ to HTML (must be done before inline math)
-	// Match $$ that are on their own line or at start/end
-	result = result.replace(/^\$\$([^$]+)\$\$$/gm, (match, latex) => {
-		return `<div data-type="math-block" data-latex="${escapeHtml(latex.trim())}"></div>`;
-	});
-	
-	// Convert inline math $...$ to HTML (but not $$)
-	result = result.replace(/(?<!\$)\$([^$\n]+)\$(?!\$)/g, (match, latex) => {
-		return `<span data-type="inline-math" data-latex="${escapeHtml(latex)}"></span>`;
-	});
-	
-	return result;
-}
-
-function escapeHtml(text) {
-	return text
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#039;');
-}
-
 // Create Shiki-based decorations for code blocks
 function createShikiDecorations(doc) {
 	const { Decoration, DecorationSet } = window.tiptap;
@@ -299,9 +244,7 @@ function setEditorContent(text) {
 	}
 
 	suppressNextChangeEvent = true;
-	// Parse math syntax from markdown before setting content
-	const processedText = parseMathFromMarkdown(text);
-	editor.commands.setContent(processedText, { contentType: 'markdown', emitUpdate: false });
+	editor.commands.setContent(text, { contentType: 'markdown', emitUpdate: false });
 	suppressNextChangeEvent = false;
 	lastMarkdown = text;
 	initializedFlag = true;
@@ -365,8 +308,6 @@ function buildToolbar() {
 		table: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1" ry="1" stroke="currentColor" stroke-width="2" fill="none"/><line x1="4" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/><line x1="10" y1="5" x2="10" y2="19" stroke="currentColor" stroke-width="2"/><line x1="16" y1="5" x2="16" y2="19" stroke="currentColor" stroke-width="2"/></svg>',
 		image: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="9" cy="10" r="2" fill="currentColor"/><polyline points="4,17 10,12 14,15 20,11 20,19 4,19" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>',
 		link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12a4 4 0 0 1 4-4h3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M15 12a4 4 0 0 1-4 4H8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M7 12a5 5 0 0 1 5-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M17 12a5 5 0 0 1-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
-		math: '<svg viewBox="0 0 24 24" aria-hidden="true"><text x="4" y="16" font-size="12" fill="currentColor" font-family="serif" font-style="italic">x</text><text x="12" y="12" font-size="8" fill="currentColor" font-family="serif">2</text></svg>',
-		mathBlock: '<svg viewBox="0 0 24 24" aria-hidden="true"><text x="3" y="14" font-size="10" fill="currentColor" font-family="serif">&#8721;</text><text x="12" y="16" font-size="10" fill="currentColor" font-family="serif" font-style="italic">x</text></svg>',
 	};
 
 	const buttons = [
@@ -385,8 +326,6 @@ function buildToolbar() {
 		{ action: 'link', label: 'Link', title: 'Insert Link', icon: iconMap.link },
 		{ action: 'code', label: '{}', title: 'Inline Code' },
 		{ action: 'codeblock', label: '</>', title: 'Code Block' },
-		{ action: 'math', label: 'x²', title: 'Inline Math ($...$)', icon: iconMap.math },
-		{ action: 'mathblock', label: '∑', title: 'Math Block ($$...$$)', icon: iconMap.mathBlock },
 	];
 
 	buttons.forEach((item) => {
@@ -557,90 +496,6 @@ function openTableDialog({ onConfirm }) {
 	dialog.colsInput.onkeydown = handleKeydown;
 }
 
-function ensureMathDialog() {
-	if (mathDialog) {
-		return mathDialog;
-	}
-
-	const overlay = document.createElement('div');
-	overlay.className = 'typedown-dialog-overlay';
-
-	const dialog = document.createElement('div');
-	dialog.className = 'typedown-dialog';
-	dialog.innerHTML = `
-		<div class="typedown-dialog-title">Edit Math (LaTeX)</div>
-		<label class="typedown-dialog-field">
-			<span>LaTeX</span>
-			<input type="text" data-math-latex placeholder="e.g. x^2 + y^2 = z^2" />
-		</label>
-		<div class="typedown-dialog-actions">
-			<button type="button" data-dialog-cancel>Cancel</button>
-			<button type="button" data-dialog-confirm>Insert</button>
-		</div>
-	`;
-
-	overlay.appendChild(dialog);
-	document.body.appendChild(overlay);
-
-	mathDialog = {
-		overlay,
-		dialog,
-		latexInput: dialog.querySelector('input[data-math-latex]'),
-		confirmButton: dialog.querySelector('button[data-dialog-confirm]'),
-		cancelButton: dialog.querySelector('button[data-dialog-cancel]'),
-	};
-
-	mathDialog.cancelButton.addEventListener('click', () => {
-		overlay.classList.remove('is-visible');
-	});
-
-	overlay.addEventListener('click', (event) => {
-		if (event.target === overlay) {
-			overlay.classList.remove('is-visible');
-		}
-	});
-
-	return mathDialog;
-}
-
-function openMathDialog({ latex, isBlock, onConfirm }) {
-	const dialog = ensureMathDialog();
-	dialog.latexInput.value = latex || '';
-	dialog.dialog.querySelector('.typedown-dialog-title').textContent = 
-		isBlock ? 'Edit Block Math (LaTeX)' : 'Edit Inline Math (LaTeX)';
-	dialog.confirmButton.textContent = latex ? 'Update' : 'Insert';
-	dialog.overlay.classList.add('is-visible');
-
-	requestAnimationFrame(() => {
-		dialog.latexInput.focus();
-		dialog.latexInput.select();
-	});
-
-	const handleConfirm = () => {
-		const newLatex = dialog.latexInput.value.trim();
-		dialog.overlay.classList.remove('is-visible');
-		if (newLatex) {
-			onConfirm(newLatex);
-		}
-	};
-
-	const handleKeydown = (event) => {
-		if (event.key === 'Escape') {
-			dialog.overlay.classList.remove('is-visible');
-		}
-		if (event.key === 'Enter' && !event.shiftKey) {
-			event.preventDefault();
-			handleConfirm();
-		}
-	};
-
-	dialog.confirmButton.onclick = handleConfirm;
-	dialog.latexInput.onkeydown = handleKeydown;
-}
-
-// Expose math dialog globally for the Tiptap extensions to use
-window.__typedownOpenMathDialog = openMathDialog;
-
 function openLinkDialog({ text, url, onConfirm }) {
 	const dialog = ensureLinkDialog();
 	dialog.textInput.value = text || '';
@@ -774,32 +629,6 @@ function handleToolbarAction(action, button) {
 		case 'codeblock':
 			editor.chain().focus().toggleCodeBlock().run();
 			break;
-		case 'math': {
-			openMathDialog({
-				latex: '',
-				isBlock: false,
-				onConfirm: (latex) => {
-					editor.chain().focus().insertContent({
-						type: 'inlineMath',
-						attrs: { latex },
-					}).run();
-				},
-			});
-			break;
-		}
-		case 'mathblock': {
-			openMathDialog({
-				latex: '',
-				isBlock: true,
-				onConfirm: (latex) => {
-					editor.chain().focus().insertContent({
-						type: 'mathBlock',
-						attrs: { latex },
-					}).run();
-				},
-			});
-			break;
-		}
 	}
 
 	updateToolbarActiveStates();
@@ -873,9 +702,7 @@ function setupEditorHandlers() {
 		const rawMarkdown = editor.storage?.markdown?.getMarkdown
 			? editor.storage.markdown.getMarkdown()
 			: editor.getText();
-		let markdown = normalizeMarkdownImages(rawMarkdown.replace(/\\\n/g, '\n'));
-		// Convert math nodes to markdown syntax
-		markdown = serializeMathToMarkdown(markdown);
+		const markdown = normalizeMarkdownImages(rawMarkdown.replace(/\\\n/g, '\n'));
 
 		lastMarkdown = markdown;
 		vscode.postMessage({ type: 'webviewChanged', text: markdown });
@@ -918,8 +745,6 @@ function initEditor() {
 		Extension,
 		Plugin,
 		PluginKey,
-		InlineMath,
-		MathBlock,
 	} = tiptap;
 
 	const editorElement = document.querySelector('#editor');
@@ -1029,10 +854,8 @@ function initEditor() {
 			TableRow,
 			TableHeader,
 			TableCell,
-			InlineMath,
-			MathBlock,
 			Markdown.configure({
-				html: true, // Enable HTML for math nodes
+				html: false,
 				tightLists: true,
 				bulletListMarker: '-',
 				breaks: true,

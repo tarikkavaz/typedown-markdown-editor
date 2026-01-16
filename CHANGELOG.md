@@ -8,9 +8,6 @@ All notable changes to this project will be documented in this file.
 - New `typedown.openByDefault` setting to open markdown files in WYSIWYG mode by default
 - When enabled, regular click opens WYSIWYG mode; context menu offers "Open in Text Editor"
 - When disabled (default), regular click opens text editor; context menu offers "Open in WYSIWYG mode"
-- **Math/LaTeX Support**: Inline math (`$...$`) and block math (`$$...$$`) with KaTeX rendering
-- Toolbar buttons for inserting inline and block math
-- Double-click on math to edit
 
 ## 1.1.3
 
