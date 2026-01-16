@@ -11,8 +11,8 @@ import { Image } from '@tiptap/extension-image';
 import { CodeBlock } from '@tiptap/extension-code-block';
 import { Table } from '@tiptap/extension-table';
 import { TableRow } from '@tiptap/extension-table-row';
-import { TableHeader } from '@tiptap/extension-table-header';
-import { TableCell } from '@tiptap/extension-table-cell';
+import { TableHeader as BaseTableHeader } from '@tiptap/extension-table-header';
+import { TableCell as BaseTableCell } from '@tiptap/extension-table-cell';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 
@@ -31,6 +31,52 @@ import markdown from 'shiki/langs/markdown.mjs';
 import python from 'shiki/langs/python.mjs';
 import bash from 'shiki/langs/bash.mjs';
 import sql from 'shiki/langs/sql.mjs';
+
+// Extended TableHeader with textAlign support for markdown alignment
+const TableHeader = BaseTableHeader.extend({
+	addAttributes() {
+		return {
+			...this.parent?.(),
+			textAlign: {
+				default: null,
+				parseHTML: (element) => {
+					const style = element.getAttribute('style') || '';
+					const match = style.match(/text-align:\s*(left|center|right)/i);
+					return match ? match[1].toLowerCase() : null;
+				},
+				renderHTML: (attributes) => {
+					if (!attributes.textAlign) {
+						return {};
+					}
+					return { style: `text-align: ${attributes.textAlign}` };
+				},
+			},
+		};
+	},
+});
+
+// Extended TableCell with textAlign support for markdown alignment
+const TableCell = BaseTableCell.extend({
+	addAttributes() {
+		return {
+			...this.parent?.(),
+			textAlign: {
+				default: null,
+				parseHTML: (element) => {
+					const style = element.getAttribute('style') || '';
+					const match = style.match(/text-align:\s*(left|center|right)/i);
+					return match ? match[1].toLowerCase() : null;
+				},
+				renderHTML: (attributes) => {
+					if (!attributes.textAlign) {
+						return {};
+					}
+					return { style: `text-align: ${attributes.textAlign}` };
+				},
+			},
+		};
+	},
+});
 
 // Bundled languages for Shiki (core set)
 const bundledLangs = [
