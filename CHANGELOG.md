@@ -2,32 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
-## 1.0.0
-
-### Added
-- WYSIWYG markdown editor powered by Tiptap
-- Context menu integration in file explorer
-- Command palette support
-- Seamless switching between WYSIWYG and default editor modes
-- Full markdown feature support (tables, images, code blocks, links, etc.)
-
-
-## 1.0.1
-
-### Added
-- Font and font size configuration options (`typedown.editor.fontFamily` and `typedown.editor.fontSize`)
-- Dynamic font size updates when VS Code editor font size changes
-- Context menu items in editor tab context menu for opening in WYSIWYG mode
-
-### Changed
-- Editor font size now matches VS Code's editor font size by default
-- Improved font rendering for crisper text appearance (subpixel antialiasing)
-- Toolbar aligned and constrained to match content area width
-- Keyboard shortcut now works more reliably
+## 1.1.2
 
 ### Fixed
-- Toolbar alignment with content area
-- Font smoothing for better readability
+- Code block syntax highlighting now automatically uses colors from your active VS Code theme.
+
+## 1.1.1
+
+### Added
+- Table insertion dialog that prompts for row and column counts
+
+## 1.1.0
+
+### Changed
+- Migrated from CKEditor to Tiptap for better performance and smaller bundle size
+
+### Added
+- Syntax highlighting for code blocks
+- Image insertion dialog with file picker
+- Link editing dialog for inserting and editing links
+- Task list support with checkboxes
 
 ## 1.0.2
 
@@ -47,23 +41,28 @@ All notable changes to this project will be documented in this file.
 - Dropdown menu scrolling - all options are accessible even in long lists
 - Table markdown conversion - tables now output correct markdown syntax with separator rows
 
-## 1.1.0
+## 1.0.1
+
+### Added
+- Font and font size configuration options (`typedown.editor.fontFamily` and `typedown.editor.fontSize`)
+- Dynamic font size updates when VS Code editor font size changes
+- Context menu items in editor tab context menu for opening in WYSIWYG mode
 
 ### Changed
-- Migrated from CKEditor to Tiptap for better performance and smaller bundle size
-
-### Added
-- Syntax highlighting for code blocks
-- Image insertion dialog with file picker
-- Link editing dialog for inserting and editing links
-- Task list support with checkboxes
-
-## 1.1.1
-
-### Added
-- Table insertion dialog that prompts for row and column counts
-
-## 1.1.2
+- Editor font size now matches VS Code's editor font size by default
+- Improved font rendering for crisper text appearance (subpixel antialiasing)
+- Toolbar aligned and constrained to match content area width
+- Keyboard shortcut now works more reliably
 
 ### Fixed
-- Code block syntax highlighting now automatically uses colors from your active VS Code theme.
+- Toolbar alignment with content area
+- Font smoothing for better readability
+
+## 1.0.0
+
+### Added
+- WYSIWYG markdown editor powered by Tiptap
+- Context menu integration in file explorer
+- Command palette support
+- Seamless switching between WYSIWYG and default editor modes
+- Full markdown feature support (tables, images, code blocks, links, etc.)
