@@ -2,17 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
-## 1.1.4
+## 1.1.3
+
+### Changed
+- Switched from PrismJS to Shiki for code block syntax highlighting with exact VS Code theme color matching
 
 ### Added
 - New `typedown.openByDefault` setting to open markdown files in WYSIWYG mode by default
 - When enabled, regular click opens WYSIWYG mode; context menu offers "Open in Text Editor"
 - When disabled (default), regular click opens text editor; context menu offers "Open in WYSIWYG mode"
-
-## 1.1.3
-
-### Changed
-- Switched from PrismJS to Shiki for code block syntax highlighting with exact VS Code theme color matching
 
 ## 1.1.2
 
