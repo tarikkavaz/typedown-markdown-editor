@@ -690,11 +690,12 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						.typedown-toolbar select {
 							background-color: transparent;
 							border: 1px solid transparent;
-							color: var(--vscode-button-foreground, var(--vscode-foreground));
+							color: var(--vscode-foreground);
 							border-radius: 3px;
 							padding: 4px 6px;
 							transition: background-color 0.2s, border-color 0.2s, color 0.2s;
 							font-size: 12px;
+							cursor: pointer;
 						}
 						
 						.typedown-toolbar button svg {
