@@ -717,6 +717,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							outline: none;
 							font-family: ${fontFamily};
 							font-size: ${fontSize}px;
+							line-height: 1.5;
 							-webkit-font-smoothing: subpixel-antialiased;
 							-moz-osx-font-smoothing: auto;
 							text-rendering: geometricPrecision;
@@ -789,8 +790,14 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						
 						.ProseMirror table td,
 						.ProseMirror table th {
-							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 35%, transparent);
+							border: 1px solid color-mix(in srgb, var(--typedown-theme-table-border) 25%, transparent);
 							padding: 6px 10px;
+						}
+						
+						.ProseMirror table th {
+							font-weight: bold;
+							font-size: 16px;
+							background: color-mix(in srgb, var(--typedown-theme-table-border) 15%, transparent);
 						}
 						
 						.ProseMirror ul[data-type="taskList"] {
