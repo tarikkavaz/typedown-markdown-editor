@@ -717,7 +717,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 							outline: none;
 							font-family: ${fontFamily};
 							font-size: ${fontSize}px;
-							line-height: 1.6;
+							line-height: 1.7;
 							-webkit-font-smoothing: subpixel-antialiased;
 							-moz-osx-font-smoothing: auto;
 							text-rendering: geometricPrecision;
