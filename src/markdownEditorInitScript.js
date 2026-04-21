@@ -307,6 +307,7 @@ function buildToolbar() {
 		outdent: '<svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="10,8 6,12 10,16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><line x1="12" y1="8" x2="20" y2="8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="12" x2="20" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><line x1="12" y1="16" x2="20" y2="16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 		table: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1" ry="1" stroke="currentColor" stroke-width="2" fill="none"/><line x1="4" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/><line x1="10" y1="5" x2="10" y2="19" stroke="currentColor" stroke-width="2"/><line x1="16" y1="5" x2="16" y2="19" stroke="currentColor" stroke-width="2"/></svg>',
 		image: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="9" cy="10" r="2" fill="currentColor"/><polyline points="4,17 10,12 14,15 20,11 20,19 4,19" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>',
+		refresh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.66-5.66L20 9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M20 4v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12a8 8 0 0 1-13.66 5.66L4 15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M4 20v-5h5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 		link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12a4 4 0 0 1 4-4h3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M15 12a4 4 0 0 1-4 4H8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M7 12a5 5 0 0 1 5-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M17 12a5 5 0 0 1-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
 	};
 
@@ -326,6 +327,7 @@ function buildToolbar() {
 		{ action: 'link', label: 'Link', title: 'Insert Link', icon: iconMap.link },
 		{ action: 'code', label: '{}', title: 'Inline Code' },
 		{ action: 'codeblock', label: '</>', title: 'Code Block' },
+		{ action: 'refresh', label: 'Refresh', title: 'Refresh from file', icon: iconMap.refresh },
 	];
 
 	buttons.forEach((item) => {
@@ -629,6 +631,20 @@ function handleToolbarAction(action, button) {
 		case 'codeblock':
 			editor.chain().focus().toggleCodeBlock().run();
 			break;
+		case 'refresh': {
+			const svg = button.querySelector('svg');
+			if (svg) {
+				svg.style.transition = 'transform 0.4s ease';
+				svg.style.transform = 'rotate(360deg)';
+				setTimeout(() => {
+					svg.style.transition = 'none';
+					svg.style.transform = 'rotate(0deg)';
+				}, 400);
+			}
+			button.blur();
+			vscode.postMessage({ type: 'requestWebviewRefresh' });
+			break;
+		}
 	}
 
 	updateToolbarActiveStates();
