@@ -13,6 +13,10 @@ let imageBaseUri = typeof window !== 'undefined' && window.__typedownBaseUri ? w
 let linkDialog = null;
 let tableDialog = null;
 
+let autoRefreshEnabled = true;
+const AUTO_REFRESH_ON_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="6,4 20,12 6,20" fill="currentColor"/></svg>';
+const AUTO_REFRESH_OFF_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="15" y="4" width="4" height="16" rx="1" fill="currentColor"/></svg>';
+
 // Shiki highlighter instance (created asynchronously)
 let shikiHighlighter = null;
 let pendingShikiTheme = null;
@@ -262,6 +266,25 @@ function updateToolbarPosition(toolbar) {
 	toolbar.style.left = `${editorRect.left}px`;
 }
 
+function showRefreshPrompt() {
+	const existing = document.getElementById('typedown-refresh-banner');
+	if (existing) {
+		return;
+	}
+	const banner = document.createElement('div');
+	banner.id = 'typedown-refresh-banner';
+	banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:1000;display:flex;align-items:center;justify-content:space-between;padding:6px 12px;background:var(--vscode-editorWidget-background,#2d2d2d);border-bottom:1px solid var(--vscode-editorWidget-border,#555);font-size:13px;';
+	banner.innerHTML = '<span>File changed externally.</span><span style="display:flex;gap:8px;"><button id="typedown-refresh-yes" style="padding:2px 10px;cursor:pointer;">Refresh</button><button id="typedown-refresh-dismiss" style="padding:2px 10px;cursor:pointer;">Dismiss</button></span>';
+	document.body.prepend(banner);
+	document.getElementById('typedown-refresh-yes').addEventListener('click', () => {
+		banner.remove();
+		vscode.postMessage({ type: 'requestWebviewRefresh' });
+	});
+	document.getElementById('typedown-refresh-dismiss').addEventListener('click', () => {
+		banner.remove();
+	});
+}
+
 function buildToolbar() {
 	const toolbar = document.querySelector('#toolbar');
 	if (!toolbar || !editor) {
@@ -308,6 +331,7 @@ function buildToolbar() {
 		table: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="1" ry="1" stroke="currentColor" stroke-width="2" fill="none"/><line x1="4" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="2"/><line x1="10" y1="5" x2="10" y2="19" stroke="currentColor" stroke-width="2"/><line x1="16" y1="5" x2="16" y2="19" stroke="currentColor" stroke-width="2"/></svg>',
 		image: '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2" ry="2" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="9" cy="10" r="2" fill="currentColor"/><polyline points="4,17 10,12 14,15 20,11 20,19 4,19" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round"/></svg>',
 		link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 12a4 4 0 0 1 4-4h3" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M15 12a4 4 0 0 1-4 4H8" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M7 12a5 5 0 0 1 5-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M17 12a5 5 0 0 1-5 5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/></svg>',
+		refresh: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 0 1 13.66-5.66L20 9" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M20 4v5h-5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 12a8 8 0 0 1-13.66 5.66L4 15" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M4 20v-5h5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>',
 	};
 
 	const buttons = [
@@ -326,6 +350,8 @@ function buildToolbar() {
 		{ action: 'link', label: 'Link', title: 'Insert Link', icon: iconMap.link },
 		{ action: 'code', label: '{}', title: 'Inline Code' },
 		{ action: 'codeblock', label: '</>', title: 'Code Block' },
+		{ action: 'refresh', label: 'Refresh', title: 'Refresh from file', icon: iconMap.refresh },
+		{ action: 'toggleAutoRefresh', label: 'Auto', title: autoRefreshEnabled ? 'Auto-refresh (on)' : 'Auto-refresh (off)', icon: autoRefreshEnabled ? AUTO_REFRESH_ON_ICON : AUTO_REFRESH_OFF_ICON },
 	];
 
 	buttons.forEach((item) => {
@@ -343,6 +369,11 @@ function buildToolbar() {
 		button.addEventListener('click', () => handleToolbarAction(item.action, button));
 		toolbar.appendChild(button);
 	});
+
+	const autoRefreshBtn = toolbar.querySelector('[data-action="toggleAutoRefresh"]');
+	if (autoRefreshBtn && autoRefreshEnabled) {
+		autoRefreshBtn.classList.add('is-active');
+	}
 
 	updateToolbarPosition(toolbar);
 	document.body.classList.add('has-fixed-toolbar');
@@ -629,6 +660,30 @@ function handleToolbarAction(action, button) {
 		case 'codeblock':
 			editor.chain().focus().toggleCodeBlock().run();
 			break;
+		case 'toggleAutoRefresh': {
+			autoRefreshEnabled = !autoRefreshEnabled;
+			button.innerHTML = autoRefreshEnabled ? AUTO_REFRESH_ON_ICON : AUTO_REFRESH_OFF_ICON;
+			button.classList.toggle('is-active', autoRefreshEnabled);
+			const label = autoRefreshEnabled ? 'Auto-refresh (on)' : 'Auto-refresh (off)';
+			button.title = label;
+			button.setAttribute('data-tooltip', label);
+			button.blur();
+			break;
+		}
+		case 'refresh': {
+			const svg = button.querySelector('svg');
+			if (svg) {
+				svg.style.transition = 'transform 0.4s ease';
+				svg.style.transform = 'rotate(360deg)';
+				setTimeout(() => {
+					svg.style.transition = 'none';
+					svg.style.transform = 'rotate(0deg)';
+				}, 400);
+			}
+			button.blur();
+			vscode.postMessage({ type: 'requestWebviewRefresh' });
+			break;
+		}
 	}
 
 	updateToolbarActiveStates();
@@ -991,6 +1046,14 @@ window.addEventListener('message', (event) => {
 			setTimeout(() => {
 				updateImageSources();
 			}, 50);
+			break;
+		}
+		case 'externalFileChanged': {
+			if (autoRefreshEnabled) {
+				vscode.postMessage({ type: 'requestWebviewRefresh' });
+			} else {
+				showRefreshPrompt();
+			}
 			break;
 		}
 	}
