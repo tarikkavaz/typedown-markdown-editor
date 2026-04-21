@@ -433,8 +433,10 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
 		const changeDocumentSubscription = vscode.workspace.onDidChangeTextDocument((e) => {
 			console.log('Changed Document: ', [JSON.stringify(e.document.getText()).substring(0, 100) + '...']);
-			// Don't update webview on document change - only on save
-			// This prevents overwriting webview changes when we apply edits
+			if (e.document.uri.toString() !== document.uri.toString()) { return; }
+			if (isUpdatingFromWebview.value) { return; }
+			if (e.contentChanges.length === 0) { return; }
+			webviewPanel.webview.postMessage({ type: 'externalFileChanged' });
 		});
 
 		const onDidChangeTextEditorVisibleRanges = vscode.window.onDidChangeTextEditorVisibleRanges(
