@@ -407,8 +407,8 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			// Change EOL to \n for consistency
 			const normalizedText = text.replace(/(?:\r\n|\r|\n)/g, '\n');
 
-			// Don't update if we just updated from webview and content hasn't changed externally
-			if (isUpdatingFromWebview.value && normalizedText === lastWebviewContent.replace(/(?:\r\n|\r|\n)/g, '\n')) {
+			// Skip if document content already matches what the webview has
+			if (normalizedText === lastWebviewContent.replace(/(?:\r\n|\r|\n)/g, '\n')) {
 				console.log('Skipping updateWebview - document matches webview content');
 				isUpdatingFromWebview.value = false;
 				return;
@@ -1158,6 +1158,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			vscode.workspace.applyEdit(edit).then((success) => {
 				if (success) {
 					console.log('Document updated successfully');
+					document.save();
 				} else {
 					console.error('Failed to apply edit to document');
 				}
