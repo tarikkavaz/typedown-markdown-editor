@@ -885,6 +885,16 @@ function initEditor() {
 	}
 
 	vscode.postMessage({ type: 'initialized' });
+
+	// If no content was set during initialization (e.g. initial documentChanged
+	// message was lost in code-server Firefox timing), request a refresh.
+	if (!initializedFlag) {
+		setTimeout(() => {
+			if (!initializedFlag) {
+				vscode.postMessage({ type: 'requestWebviewRefresh' });
+			}
+		}, 100);
+	}
 }
 
 window.addEventListener('message', (event) => {
