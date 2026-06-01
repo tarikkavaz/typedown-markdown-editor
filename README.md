@@ -152,6 +152,22 @@ Set the maximum width of the editor content area:
 
 Default is `91ch`. Accepts any valid CSS width value (e.g., `800px`, `100%`).
 
+### Editor Padding
+
+Set the CSS padding applied to the editor content area. Useful when the
+window is narrower than `typedown.editor.width` and the text would
+otherwise sit flush against the edges:
+
+```json
+{
+  "typedown.editor.padding": "12px 24px 40px"
+}
+```
+
+Default is `12px 0 40px` (no horizontal padding, matches previous
+behaviour). Accepts any valid CSS shorthand (e.g., `24px`, `1em 2em`,
+`12px 32px 48px`).
+
 ### Open WYSIWYG by Default
 
 Make WYSIWYG mode the default when opening markdown files:
@@ -180,6 +196,7 @@ Here's a complete example configuration:
   "typedown.editor.fontSize": 16,
   "typedown.editor.codeBlockfontFamily": "'JetBrains Mono', monospace",
   "typedown.editor.width": "100ch",
+  "typedown.editor.padding": "12px 24px 40px",
   "typedown.openByDefault": true
 }
 ```
