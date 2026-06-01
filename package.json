@@ -132,6 +132,12 @@
 					"description": "Maximum width of the markdown editor content area.",
 					"markdownDescription": "Maximum width of the markdown editor content area. Use any valid CSS width (e.g., `91ch`, `120ch`, `800px`)."
 				},
+				"typedown.editor.padding": {
+					"type": "string",
+					"default": "12px 0 40px",
+					"description": "CSS padding applied to the editor content area (shorthand, e.g. \"12px 24px 40px\" or \"24px\"). Useful for adding horizontal breathing room when the window is narrower than the content width.",
+					"markdownDescription": "CSS `padding` applied to the editor content area. Accepts any valid CSS shorthand (e.g., `12px 24px 40px`, `24px`, `1em 2em`). Default `12px 0 40px` matches the previous behaviour (no horizontal padding). Increase the horizontal value to add breathing room when the editor width fills the window."
+				},
 				"typedown.editor.codeBlockfontFamily": {
 					"type": "string",
 					"default": null,

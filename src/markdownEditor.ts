@@ -636,6 +636,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 			codeBlockFontFamily = 'monospace';
 		}
 		const editorWidth = typedownConfig.get<string>('width', '91ch');
+		const editorPadding = typedownConfig.get<string>('padding', '12px 0 40px');
 
 		// Use a nonce to only allow a specific script to be run.
 		const nonce = getNonce();
@@ -713,7 +714,7 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 						}
 						
 						.ProseMirror {
-							padding: 12px 0 40px;
+							padding: ${editorPadding};
 							outline: none;
 							font-family: ${fontFamily};
 							font-size: ${fontSize}px;
