@@ -406,28 +406,31 @@ export class MarkdownEditorProvider implements vscode.CustomTextEditorProvider {
 
 			// Change EOL to \n for consistency
 			const normalizedText = text.replace(/(?:\r\n|\r|\n)/g, '\n');
+			const normalizedLast = lastWebviewContent.replace(/(?:\r\n|\r|\n)/g, '\n');
 
-			// Don't update if we just updated from webview and content hasn't changed externally
-			if (isUpdatingFromWebview.value && normalizedText === lastWebviewContent.replace(/(?:\r\n|\r|\n)/g, '\n')) {
+			// Skip if the document content already matches what the webview has.
+			// Comparing content (not a time-based flag) avoids a race where an
+			// autosave fires after our suppress flag has been cleared, which
+			// would push the document back into the webview and reset the
+			// cursor to the end of the file.
+			if (normalizedText === normalizedLast) {
 				console.log('Skipping updateWebview - document matches webview content');
-				isUpdatingFromWebview.value = false;
 				return;
 			}
 
 			console.log('updateWebview', [JSON.stringify(text)]);
 			webviewPanel.webview.postMessage({ type: 'documentChanged', text: normalizedText });
-			isUpdatingFromWebview.value = false;
+			// Remember what the webview now has so the next compare is correct
+			// when the document changes again (externally or via autosave).
+			lastWebviewContent = normalizedText;
 		}
 
 		const saveDocumentSubscription = vscode.workspace.onDidSaveTextDocument((e) => {
 			console.log('Saved Document');
 			if (e.uri.toString() === document.uri.toString()) {
-				// Don't update webview on save if changes came from webview
-				if (!isUpdatingFromWebview.value) {
-					updateWebview();
-				} else {
-					isUpdatingFromWebview.value = false;
-				}
+				// updateWebview() is now self-guarded by content comparison,
+				// so it's safe to call unconditionally on save.
+				updateWebview();
 			}
 		});
 
